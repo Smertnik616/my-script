@@ -391,8 +391,13 @@
     }
 
     function normalizePoint(p) {
+        const id = p.id || (Date.now() + Math.random());
+        // Для старих точок без createdAt — беремо час з id (Date.now()+random)
+        const createdAt = Number(p.createdAt)
+            || (typeof id === 'number' ? Math.floor(id) : Date.parse(id))
+            || Date.now();
         return {
-            id: p.id || (Date.now() + Math.random()),
+            id,
             lat: Number(p.lat),
             lon: Number(p.lon),
             radius: Number(p.radius) || 300,
@@ -400,7 +405,7 @@
             comment: p.comment || '',
             means: p.means || p.weapon || 'Інше',
             color: p.color || '#ef4444',
-            createdAt: p.createdAt || Date.now()
+            createdAt
         };
     }
 
@@ -472,6 +477,7 @@
                 #falcon-route-ui .fr-btn-danger:hover { background: #dc2626; color: #fff; }
                 #falcon-route-ui .fr-btn-wide { width: 100%; }
                 #falcon-route-ui .fr-btn-ok { background: #14532d; color: #86efac; }
+                #falcon-route-ui .fr-count { color: #93c5fd; font-size: 11px; font-weight: bold; margin: 0 0 4px 0; }
                 #falcon-route-ui .fr-list { max-height: 110px !important; height: 110px !important; overflow-x: hidden; overflow-y: auto !important; background: #0f1015; border: 1px solid #252836; border-radius: 4px; padding: 4px; flex-shrink: 0 !important; }
                 #falcon-route-ui .fr-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; padding: 4px; border-bottom: 1px solid #1a1c26; font-family: monospace; font-size: 10px; }
                 #falcon-route-ui .fr-item-main { flex: 1; min-width: 0; word-break: break-all; }
@@ -591,6 +597,7 @@
                     </div>
                 </div>
 
+                <div class="fr-count" id="fr-count">Точок: 0</div>
                 <div class="fr-list" id="fr-container"></div>
                 <div class="fr-sync" id="fr-sync">${FIREBASE_ENABLED ? 'Firebase: підключення…' : 'Локальний режим (без Firebase)'}</div>
             </div>
@@ -1163,6 +1170,12 @@
             while (container.firstChild) container.removeChild(container.firstChild);
             const fmt = document.getElementById('fr-coord-format').value;
             const visible = getVisiblePoints();
+            const countEl = document.getElementById('fr-count');
+            if (countEl) {
+                countEl.textContent = visible.length === poiStore.length
+                    ? `Точок у списку: ${visible.length}`
+                    : `У списку: ${visible.length} з ${poiStore.length} (фільтр)`;
+            }
 
             if (!visible.length) {
                 const empty = document.createElement('div');
