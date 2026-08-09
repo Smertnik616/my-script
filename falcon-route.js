@@ -21,21 +21,14 @@
         { id: 'anubis', name: 'Анубіс' },
         { id: 'other', name: 'Інше' }
     ];
-    // Тип — додатковий список без кольорів
-    const DEFAULT_TYPES = [
-        { id: 'other', name: 'Інше' }
-    ];
-
     const DEFAULT_SETTINGS = {
         means: DEFAULT_ZBYTTYA.map(m => ({ ...m })), // збиття (ключ means для сумісності)
         zasibs: DEFAULT_ZASIB.map(m => ({ ...m })),
-        types: DEFAULT_TYPES.map(m => ({ ...m })),
         showPoints: true,
         coordFormat: 'dd',
         timeFilter: 'all',
         meansFilter: 'all',
         zasibFilter: 'all',
-        typeFilter: 'all',
         defaultAlt: 100,
         defaultRadius: 300,
         corridorWidth: 2000
@@ -391,8 +384,7 @@
         const blank = () => ({
             ...DEFAULT_SETTINGS,
             means: DEFAULT_ZBYTTYA.map(m => ({ ...m })),
-            zasibs: DEFAULT_ZASIB.map(m => ({ ...m })),
-            types: DEFAULT_TYPES.map(m => ({ ...m }))
+            zasibs: DEFAULT_ZASIB.map(m => ({ ...m }))
         });
         try {
             const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
@@ -405,10 +397,7 @@
                     : DEFAULT_ZBYTTYA.map(m => ({ ...m })),
                 zasibs: Array.isArray(raw.zasibs) && raw.zasibs.length
                     ? raw.zasibs
-                    : DEFAULT_ZASIB.map(m => ({ ...m })),
-                types: Array.isArray(raw.types) && raw.types.length
-                    ? raw.types
-                    : DEFAULT_TYPES.map(m => ({ ...m }))
+                    : DEFAULT_ZASIB.map(m => ({ ...m }))
             };
         } catch (_) {
             return blank();
@@ -441,10 +430,9 @@
 
     function normalizePoint(p) {
         const id = p.id || (Date.now() + Math.random());
-        // means = збиття; zasib = засіб (міграція зі старого comment); type = новий список
+        // means = збиття; zasib = засіб (міграція зі старого comment)
         const means = p.means || 'Інше';
         const zasib = p.zasib || p.comment || p.weapon || 'Інше';
-        const type = p.type || 'Інше';
         return {
             id,
             lat: Number(p.lat),
@@ -454,7 +442,6 @@
             comment: p.comment || '',
             means,
             zasib,
-            type,
             color: p.color || '#ef4444',
             createdAt: resolveCreatedAt({ ...p, id })
         };
@@ -583,10 +570,6 @@
                     <select id="fr-zasib"></select>
                 </div>
                 <div class="fr-row">
-                    <label>Тип:</label>
-                    <select id="fr-type"></select>
-                </div>
-                <div class="fr-row">
                     <label>Висота збиття (м):</label>
                     <input type="number" id="fr-alt" value="${settings.defaultAlt}" step="50" min="0">
                 </div>
@@ -616,10 +599,6 @@
                     <div class="fr-row">
                         <label>Фільтр засобу:</label>
                         <select id="fr-zasib-filter"></select>
-                    </div>
-                    <div class="fr-row">
-                        <label>Фільтр типу:</label>
-                        <select id="fr-type-filter"></select>
                     </div>
                     <div class="fr-legend" id="fr-legend"></div>
                 </div>
@@ -666,15 +645,6 @@
                     <div class="fr-means-row">
                         <input type="text" id="fr-zasib-new-name" placeholder="Новий засіб">
                         <button class="fr-btn" id="fr-zasib-add">＋</button>
-                    </div>
-                </details>
-
-                <details class="fr-details fr-section">
-                    <summary>⚙ Типи (без кольорів)</summary>
-                    <div class="fr-means-list" id="fr-type-edit"></div>
-                    <div class="fr-means-row">
-                        <input type="text" id="fr-type-new-name" placeholder="Новий тип">
-                        <button class="fr-btn" id="fr-type-add">＋</button>
                     </div>
                 </details>
 
@@ -747,7 +717,6 @@
             settings.timeFilter = document.getElementById('fr-time-filter').value;
             settings.meansFilter = document.getElementById('fr-means-filter').value;
             settings.zasibFilter = document.getElementById('fr-zasib-filter').value;
-            settings.typeFilter = document.getElementById('fr-type-filter').value;
             localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
         }
 
@@ -850,16 +819,13 @@
             poiStore.forEach(p => {
                 settings.means = ensureNamedOption(settings.means, p.means);
                 settings.zasibs = ensureNamedOption(settings.zasibs, p.zasib);
-                settings.types = ensureNamedOption(settings.types, p.type);
             });
 
             fillSelect(document.getElementById('fr-means'), settings.means, document.getElementById('fr-means').value);
             fillSelect(document.getElementById('fr-zasib'), settings.zasibs, document.getElementById('fr-zasib').value);
-            fillSelect(document.getElementById('fr-type'), settings.types, document.getElementById('fr-type').value);
 
             fillFilterSelect(document.getElementById('fr-means-filter'), settings.means, settings.meansFilter, 'Усі збиття');
             fillFilterSelect(document.getElementById('fr-zasib-filter'), settings.zasibs, settings.zasibFilter, 'Усі засоби');
-            fillFilterSelect(document.getElementById('fr-type-filter'), settings.types, settings.typeFilter, 'Усі типи');
 
             const legend = document.getElementById('fr-legend');
             legend.innerHTML = '';
@@ -886,14 +852,6 @@
                 listKey: 'zasibs',
                 pointKey: 'zasib',
                 minLabel: 'Має залишитись хоча б один засіб.',
-                withColor: false,
-                onRefresh: () => { fillCatalogSelects(); refreshUI(); }
-            });
-            renderNameListEditor({
-                editId: 'fr-type-edit',
-                listKey: 'types',
-                pointKey: 'type',
-                minLabel: 'Має залишитись хоча б один тип.',
                 withColor: false,
                 onRefresh: () => { fillCatalogSelects(); refreshUI(); }
             });
@@ -928,14 +886,12 @@
         function getVisiblePoints() {
             const meansFilter = document.getElementById('fr-means-filter').value;
             const zasibFilter = document.getElementById('fr-zasib-filter').value;
-            const typeFilter = document.getElementById('fr-type-filter').value;
             const width = parseFloat(document.getElementById('fr-corridor-w').value) || 2000;
             const timeMode = getTimeMode();
             return poiStore.filter(pt => {
                 if (!passesTimeFilter(pt, timeMode)) return false;
                 if (meansFilter !== 'all' && pt.means !== meansFilter) return false;
                 if (zasibFilter !== 'all' && pt.zasib !== zasibFilter) return false;
-                if (typeFilter !== 'all' && pt.type !== typeFilter) return false;
                 if (!pointInCorridor(pt, corridor, width)) return false;
                 return true;
             });
@@ -945,7 +901,7 @@
             const fmt = coordFormat || document.getElementById('fr-coord-format').value;
             return points.map(p => {
                 const c = formatCoord(p.lat, p.lon, fmt);
-                return `${c} | H${p.alt || 0}м | збиття:${p.means} | засіб:${p.zasib || ''} | тип:${p.type || ''}`;
+                return `${c} | H${p.alt || 0}м | збиття:${p.means} | засіб:${p.zasib || ''}`;
             }).join('\n');
         }
 
@@ -956,7 +912,7 @@
                 exportedAt: new Date().toISOString(),
                 points: points.map(p => ({
                     id: p.id, lat: p.lat, lon: p.lon, radius: p.radius,
-                    alt: p.alt, means: p.means, zasib: p.zasib, type: p.type,
+                    alt: p.alt, means: p.means, zasib: p.zasib,
                     color: p.color, createdAt: p.createdAt
                 }))
             }, null, 2);
@@ -970,7 +926,7 @@
                     geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
                     properties: {
                         id: p.id, radius: p.radius, alt: p.alt,
-                        means: p.means, zasib: p.zasib, type: p.type,
+                        means: p.means, zasib: p.zasib,
                         color: p.color, createdAt: p.createdAt
                     }
                 }))
@@ -982,8 +938,7 @@
             return {
                 means: zbyttya.name,
                 color: zbyttya.color,
-                zasib: document.getElementById('fr-zasib').value || 'Інше',
-                type: document.getElementById('fr-type').value || 'Інше'
+                zasib: document.getElementById('fr-zasib').value || 'Інше'
             };
         }
 
@@ -1011,7 +966,7 @@
                         points.push(normalizePoint({
                             id: Date.now() + Math.random(),
                             lat, lon, radius, alt,
-                            means: sel.means, zasib: sel.zasib, type: sel.type,
+                            means: sel.means, zasib: sel.zasib,
                             color: sel.color, createdAt: Date.now()
                         }));
                     }
@@ -1040,7 +995,6 @@
                     comment: f.properties?.comment,
                     means: f.properties?.means,
                     zasib: f.properties?.zasib,
-                    type: f.properties?.type,
                     color: f.properties?.color,
                     createdAt: f.properties?.createdAt
                 }));
@@ -1239,7 +1193,7 @@
                             strokeWeight: 1.5,
                             labelOrigin: new google.maps.Point(0, 0)
                         },
-                        title: `Збиття: ${pt.means} · Засіб: ${pt.zasib || '-'} · Тип: ${pt.type || '-'} · ${pt.alt || 0}м`,
+                        title: `Збиття: ${pt.means} · Засіб: ${pt.zasib || '-'} · ${pt.alt || 0}м`,
                         zIndex: 150
                     });
 
@@ -1419,7 +1373,7 @@
                 main.appendChild(document.createElement('br'));
                 const meta = document.createElement('span');
                 meta.style.color = '#fde68a';
-                meta.textContent = `засіб: ${pt.zasib || '-'} · тип: ${pt.type || '-'}`;
+                meta.textContent = `засіб: ${pt.zasib || '-'}`;
                 main.appendChild(meta);
                 main.appendChild(document.createElement('br'));
                 main.appendChild(document.createTextNode(coord));
@@ -1502,7 +1456,7 @@
             saveData([...poiStore, normalizePoint({
                 id: Date.now() + Math.random(),
                 lat, lon, radius: rad, alt,
-                means: sel.means, zasib: sel.zasib, type: sel.type,
+                means: sel.means, zasib: sel.zasib,
                 color: sel.color, createdAt: Date.now()
             })]);
         }
@@ -1526,7 +1480,7 @@
         showPointsEl.addEventListener('change', onFilterChange);
         showPointsEl.addEventListener('input', onFilterChange);
 
-        ['fr-time-filter', 'fr-means-filter', 'fr-zasib-filter', 'fr-type-filter'].forEach(id => {
+        ['fr-time-filter', 'fr-means-filter', 'fr-zasib-filter'].forEach(id => {
             const el = document.getElementById(id);
             el.addEventListener('change', onFilterChange);
             el.addEventListener('input', onFilterChange);
@@ -1566,9 +1520,6 @@
         };
         document.getElementById('fr-zasib-add').onclick = () => {
             addNamedItem('zasibs', 'fr-zasib-new-name', 'fr-zasib', 'Вкажіть назву засобу.', 'Такий засіб уже є.');
-        };
-        document.getElementById('fr-type-add').onclick = () => {
-            addNamedItem('types', 'fr-type-new-name', 'fr-type', 'Вкажіть назву типу.', 'Такий тип уже є.');
         };
 
         const copyBtn = document.getElementById('fr-copy');
