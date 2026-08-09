@@ -9,20 +9,33 @@
     const CORRIDOR_KEY = 'cesium_falcon_route_corridor_v1';
     const MAX_BOOT_ATTEMPTS = 40;
 
-    const DEFAULT_MEANS = [
+    // Збиття — з кольорами (раніше «засіб»)
+    const DEFAULT_ZBYTTYA = [
         { id: 'mvg', name: 'МВГ', color: '#ef4444' },
         { id: 'drone', name: 'Дрон', color: '#f59e0b' },
-        { id: 'b2', name: 'Б2', color: '#3b82f6' },
-        { id: 'anubis', name: 'Анубіс', color: '#a855f7' },
         { id: 'other', name: 'Інше', color: '#9ca3af' }
+    ];
+    // Засіб — без кольорів (раніше вільний «коментар»)
+    const DEFAULT_ZASIB = [
+        { id: 'b2', name: 'Б2' },
+        { id: 'anubis', name: 'Анубіс' },
+        { id: 'other', name: 'Інше' }
+    ];
+    // Тип — додатковий список без кольорів
+    const DEFAULT_TYPES = [
+        { id: 'other', name: 'Інше' }
     ];
 
     const DEFAULT_SETTINGS = {
-        means: DEFAULT_MEANS.map(m => ({ ...m })),
+        means: DEFAULT_ZBYTTYA.map(m => ({ ...m })), // збиття (ключ means для сумісності)
+        zasibs: DEFAULT_ZASIB.map(m => ({ ...m })),
+        types: DEFAULT_TYPES.map(m => ({ ...m })),
         showPoints: true,
         coordFormat: 'dd',
         timeFilter: 'all',
         meansFilter: 'all',
+        zasibFilter: 'all',
+        typeFilter: 'all',
         defaultAlt: 100,
         defaultRadius: 300,
         corridorWidth: 2000
@@ -375,19 +388,38 @@
     }
 
     function loadSettings() {
+        const blank = () => ({
+            ...DEFAULT_SETTINGS,
+            means: DEFAULT_ZBYTTYA.map(m => ({ ...m })),
+            zasibs: DEFAULT_ZASIB.map(m => ({ ...m })),
+            types: DEFAULT_TYPES.map(m => ({ ...m }))
+        });
         try {
             const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
-            if (!raw) return { ...DEFAULT_SETTINGS, means: DEFAULT_MEANS.map(m => ({ ...m })) };
+            if (!raw) return blank();
             return {
                 ...DEFAULT_SETTINGS,
                 ...raw,
                 means: Array.isArray(raw.means) && raw.means.length
                     ? raw.means
-                    : DEFAULT_MEANS.map(m => ({ ...m }))
+                    : DEFAULT_ZBYTTYA.map(m => ({ ...m })),
+                zasibs: Array.isArray(raw.zasibs) && raw.zasibs.length
+                    ? raw.zasibs
+                    : DEFAULT_ZASIB.map(m => ({ ...m })),
+                types: Array.isArray(raw.types) && raw.types.length
+                    ? raw.types
+                    : DEFAULT_TYPES.map(m => ({ ...m }))
             };
         } catch (_) {
-            return { ...DEFAULT_SETTINGS, means: DEFAULT_MEANS.map(m => ({ ...m })) };
+            return blank();
         }
+    }
+
+    function ensureNamedOption(list, name) {
+        const n = (name || '').trim();
+        if (!n) return list;
+        if (list.some(x => x.name === n)) return list;
+        return [...list, { id: 'auto_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name: n }];
     }
 
     function resolveCreatedAt(p) {
@@ -409,6 +441,10 @@
 
     function normalizePoint(p) {
         const id = p.id || (Date.now() + Math.random());
+        // means = збиття; zasib = засіб (міграція зі старого comment); type = новий список
+        const means = p.means || 'Інше';
+        const zasib = p.zasib || p.comment || p.weapon || 'Інше';
+        const type = p.type || 'Інше';
         return {
             id,
             lat: Number(p.lat),
@@ -416,7 +452,9 @@
             radius: Number(p.radius) || 300,
             alt: Number(p.alt ?? p.height ?? p.altitude) || 0,
             comment: p.comment || '',
-            means: p.means || p.weapon || 'Інше',
+            means,
+            zasib,
+            type,
             color: p.color || '#ef4444',
             createdAt: resolveCreatedAt({ ...p, id })
         };
@@ -537,16 +575,20 @@
                 <button class="fr-btn fr-btn-pick" id="fr-pick">🎯 Клацнути на карті</button>
 
                 <div class="fr-row">
-                    <label>Засіб:</label>
+                    <label>Збиття:</label>
                     <select id="fr-means"></select>
+                </div>
+                <div class="fr-row">
+                    <label>Засіб:</label>
+                    <select id="fr-zasib"></select>
+                </div>
+                <div class="fr-row">
+                    <label>Тип:</label>
+                    <select id="fr-type"></select>
                 </div>
                 <div class="fr-row">
                     <label>Висота збиття (м):</label>
                     <input type="number" id="fr-alt" value="${settings.defaultAlt}" step="50" min="0">
-                </div>
-                <div class="fr-row">
-                    <label>Коментар:</label>
-                    <input type="text" id="fr-comment" placeholder="короткий коментар" maxlength="80">
                 </div>
                 <div class="fr-row">
                     <label>Радіус (м):</label>
@@ -568,8 +610,16 @@
                         </select>
                     </div>
                     <div class="fr-row">
-                        <label>Фільтр засобу:</label>
+                        <label>Фільтр збиття:</label>
                         <select id="fr-means-filter"></select>
+                    </div>
+                    <div class="fr-row">
+                        <label>Фільтр засобу:</label>
+                        <select id="fr-zasib-filter"></select>
+                    </div>
+                    <div class="fr-row">
+                        <label>Фільтр типу:</label>
+                        <select id="fr-type-filter"></select>
                     </div>
                     <div class="fr-legend" id="fr-legend"></div>
                 </div>
@@ -601,12 +651,30 @@
                 </div>
 
                 <details class="fr-details fr-section">
-                    <summary>⚙ Налаштування засобів / кольорів</summary>
+                    <summary>⚙ Збиття / кольори</summary>
                     <div class="fr-means-list" id="fr-means-edit"></div>
                     <div class="fr-means-row">
-                        <input type="text" id="fr-means-new-name" placeholder="Новий засіб">
+                        <input type="text" id="fr-means-new-name" placeholder="Нове збиття">
                         <input type="color" id="fr-means-new-color" value="#22c55e">
                         <button class="fr-btn" id="fr-means-add">＋</button>
+                    </div>
+                </details>
+
+                <details class="fr-details fr-section">
+                    <summary>⚙ Засоби (без кольорів)</summary>
+                    <div class="fr-means-list" id="fr-zasib-edit"></div>
+                    <div class="fr-means-row">
+                        <input type="text" id="fr-zasib-new-name" placeholder="Новий засіб">
+                        <button class="fr-btn" id="fr-zasib-add">＋</button>
+                    </div>
+                </details>
+
+                <details class="fr-details fr-section">
+                    <summary>⚙ Типи (без кольорів)</summary>
+                    <div class="fr-means-list" id="fr-type-edit"></div>
+                    <div class="fr-means-row">
+                        <input type="text" id="fr-type-new-name" placeholder="Новий тип">
+                        <button class="fr-btn" id="fr-type-add">＋</button>
                     </div>
                 </details>
 
@@ -678,39 +746,120 @@
             settings.coordFormat = document.getElementById('fr-coord-format').value;
             settings.timeFilter = document.getElementById('fr-time-filter').value;
             settings.meansFilter = document.getElementById('fr-means-filter').value;
+            settings.zasibFilter = document.getElementById('fr-zasib-filter').value;
+            settings.typeFilter = document.getElementById('fr-type-filter').value;
             localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
         }
 
-        function getMeansByName(name) {
-            return settings.means.find(m => m.name === name) || settings.means[settings.means.length - 1] || DEFAULT_MEANS[DEFAULT_MEANS.length - 1];
+        function getZbyttyaByName(name) {
+            return settings.means.find(m => m.name === name)
+                || settings.means[settings.means.length - 1]
+                || DEFAULT_ZBYTTYA[DEFAULT_ZBYTTYA.length - 1];
         }
 
-        function fillMeansSelects() {
-            const meansSel = document.getElementById('fr-means');
-            const filterSel = document.getElementById('fr-means-filter');
-            const curMeans = meansSel.value;
-            const curFilter = filterSel.value || settings.meansFilter;
+        function fillSelect(sel, items, current, fallback) {
+            sel.innerHTML = '';
+            items.forEach(m => {
+                const o = document.createElement('option');
+                o.value = m.name;
+                o.textContent = m.name;
+                sel.appendChild(o);
+            });
+            if ([...sel.options].some(o => o.value === current)) sel.value = current;
+            else if (items[0]) sel.value = items[0].name;
+            else if (fallback) sel.value = fallback;
+        }
 
-            meansSel.innerHTML = '';
-            filterSel.innerHTML = '<option value="all">Усі засоби</option>';
+        function fillFilterSelect(sel, items, current, allLabel) {
+            sel.innerHTML = '';
+            const all = document.createElement('option');
+            all.value = 'all';
+            all.textContent = allLabel;
+            sel.appendChild(all);
+            items.forEach(m => {
+                const o = document.createElement('option');
+                o.value = m.name;
+                o.textContent = m.name;
+                sel.appendChild(o);
+            });
+            if ([...sel.options].some(o => o.value === current)) sel.value = current;
+            else sel.value = 'all';
+        }
 
-            settings.means.forEach(m => {
-                const o1 = document.createElement('option');
-                o1.value = m.name;
-                o1.textContent = m.name;
-                meansSel.appendChild(o1);
+        function renderNameListEditor(opts) {
+            const {
+                editId, listKey, pointKey, minLabel, withColor, onRefresh
+            } = opts;
+            const edit = document.getElementById(editId);
+            edit.innerHTML = '';
+            settings[listKey].forEach((m, idx) => {
+                const row = document.createElement('div');
+                row.className = 'fr-means-row';
+                const name = document.createElement('input');
+                name.type = 'text';
+                name.value = m.name;
+                const del = document.createElement('button');
+                del.className = 'fr-btn fr-btn-danger';
+                del.textContent = '✕';
+                const apply = () => {
+                    const oldName = m.name;
+                    m.name = name.value.trim() || m.name;
+                    if (withColor) m.color = color.value;
+                    poiStore = poiStore.map(p => {
+                        if (p[pointKey] === oldName) {
+                            const next = { ...p, [pointKey]: m.name };
+                            if (withColor) next.color = m.color;
+                            return next;
+                        }
+                        if (withColor && p[pointKey] === m.name) {
+                            return { ...p, color: m.color };
+                        }
+                        return p;
+                    });
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(poiStore));
+                    pushToFirebase(poiStore);
+                    saveSettings();
+                    onRefresh();
+                };
+                name.onchange = apply;
+                let color = null;
+                if (withColor) {
+                    color = document.createElement('input');
+                    color.type = 'color';
+                    color.value = m.color || '#9ca3af';
+                    color.onchange = apply;
+                }
+                del.onclick = () => {
+                    if (settings[listKey].length <= 1) {
+                        alert(minLabel);
+                        return;
+                    }
+                    settings[listKey].splice(idx, 1);
+                    saveSettings();
+                    onRefresh();
+                };
+                row.appendChild(name);
+                if (color) row.appendChild(color);
+                row.appendChild(del);
+                edit.appendChild(row);
+            });
+        }
 
-                const o2 = document.createElement('option');
-                o2.value = m.name;
-                o2.textContent = m.name;
-                filterSel.appendChild(o2);
+        function fillCatalogSelects() {
+            // Підтягнути значення з точок у списки (міграція comment → засіб тощо)
+            poiStore.forEach(p => {
+                settings.means = ensureNamedOption(settings.means, p.means);
+                settings.zasibs = ensureNamedOption(settings.zasibs, p.zasib);
+                settings.types = ensureNamedOption(settings.types, p.type);
             });
 
-            if ([...meansSel.options].some(o => o.value === curMeans)) meansSel.value = curMeans;
-            else if (settings.means[0]) meansSel.value = settings.means[0].name;
+            fillSelect(document.getElementById('fr-means'), settings.means, document.getElementById('fr-means').value);
+            fillSelect(document.getElementById('fr-zasib'), settings.zasibs, document.getElementById('fr-zasib').value);
+            fillSelect(document.getElementById('fr-type'), settings.types, document.getElementById('fr-type').value);
 
-            if ([...filterSel.options].some(o => o.value === curFilter)) filterSel.value = curFilter;
-            else filterSel.value = 'all';
+            fillFilterSelect(document.getElementById('fr-means-filter'), settings.means, settings.meansFilter, 'Усі збиття');
+            fillFilterSelect(document.getElementById('fr-zasib-filter'), settings.zasibs, settings.zasibFilter, 'Усі засоби');
+            fillFilterSelect(document.getElementById('fr-type-filter'), settings.types, settings.typeFilter, 'Усі типи');
 
             const legend = document.getElementById('fr-legend');
             legend.innerHTML = '';
@@ -724,59 +873,37 @@
                 legend.appendChild(span);
             });
 
-            const edit = document.getElementById('fr-means-edit');
-            edit.innerHTML = '';
-            settings.means.forEach((m, idx) => {
-                const row = document.createElement('div');
-                row.className = 'fr-means-row';
-                const name = document.createElement('input');
-                name.type = 'text';
-                name.value = m.name;
-                const color = document.createElement('input');
-                color.type = 'color';
-                color.value = m.color;
-                const del = document.createElement('button');
-                del.className = 'fr-btn fr-btn-danger';
-                del.textContent = '✕';
-                del.title = 'Прибрати засіб';
-                const apply = () => {
-                    const oldName = m.name;
-                    m.name = name.value.trim() || m.name;
-                    m.color = color.value;
-                    if (oldName !== m.name) {
-                        poiStore = poiStore.map(p => p.means === oldName ? { ...p, means: m.name, color: m.color } : p);
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify(poiStore));
-                    } else {
-                        poiStore = poiStore.map(p => p.means === m.name ? { ...p, color: m.color } : p);
-                        localStorage.setItem(STORAGE_KEY, JSON.stringify(poiStore));
-                    }
-                    saveSettings();
-                    fillMeansSelects();
-                    refreshUI();
-                    pushToFirebase(poiStore);
-                };
-                name.onchange = apply;
-                color.onchange = apply;
-                del.onclick = () => {
-                    if (settings.means.length <= 1) {
-                        alert('Має залишитись хоча б один засіб.');
-                        return;
-                    }
-                    settings.means.splice(idx, 1);
-                    saveSettings();
-                    fillMeansSelects();
-                    refreshUI();
-                };
-                row.appendChild(name);
-                row.appendChild(color);
-                row.appendChild(del);
-                edit.appendChild(row);
+            renderNameListEditor({
+                editId: 'fr-means-edit',
+                listKey: 'means',
+                pointKey: 'means',
+                minLabel: 'Має залишитись хоча б одне збиття.',
+                withColor: true,
+                onRefresh: () => { fillCatalogSelects(); refreshUI(); }
             });
+            renderNameListEditor({
+                editId: 'fr-zasib-edit',
+                listKey: 'zasibs',
+                pointKey: 'zasib',
+                minLabel: 'Має залишитись хоча б один засіб.',
+                withColor: false,
+                onRefresh: () => { fillCatalogSelects(); refreshUI(); }
+            });
+            renderNameListEditor({
+                editId: 'fr-type-edit',
+                listKey: 'types',
+                pointKey: 'type',
+                minLabel: 'Має залишитись хоча б один тип.',
+                withColor: false,
+                onRefresh: () => { fillCatalogSelects(); refreshUI(); }
+            });
+
+            saveSettings();
         }
 
         document.getElementById('fr-coord-format').value = settings.coordFormat;
         document.getElementById('fr-time-filter').value = settings.timeFilter;
-        fillMeansSelects();
+        fillCatalogSelects();
 
         function getTimeMode() {
             return document.getElementById('fr-time-filter')?.value || 'all';
@@ -800,11 +927,15 @@
 
         function getVisiblePoints() {
             const meansFilter = document.getElementById('fr-means-filter').value;
+            const zasibFilter = document.getElementById('fr-zasib-filter').value;
+            const typeFilter = document.getElementById('fr-type-filter').value;
             const width = parseFloat(document.getElementById('fr-corridor-w').value) || 2000;
             const timeMode = getTimeMode();
             return poiStore.filter(pt => {
                 if (!passesTimeFilter(pt, timeMode)) return false;
                 if (meansFilter !== 'all' && pt.means !== meansFilter) return false;
+                if (zasibFilter !== 'all' && pt.zasib !== zasibFilter) return false;
+                if (typeFilter !== 'all' && pt.type !== typeFilter) return false;
                 if (!pointInCorridor(pt, corridor, width)) return false;
                 return true;
             });
@@ -814,7 +945,7 @@
             const fmt = coordFormat || document.getElementById('fr-coord-format').value;
             return points.map(p => {
                 const c = formatCoord(p.lat, p.lon, fmt);
-                return `${c} | H${p.alt || 0}м | ${p.means}${p.comment ? ' | ' + p.comment : ''}`;
+                return `${c} | H${p.alt || 0}м | збиття:${p.means} | засіб:${p.zasib || ''} | тип:${p.type || ''}`;
             }).join('\n');
         }
 
@@ -825,7 +956,8 @@
                 exportedAt: new Date().toISOString(),
                 points: points.map(p => ({
                     id: p.id, lat: p.lat, lon: p.lon, radius: p.radius,
-                    alt: p.alt, comment: p.comment, means: p.means, color: p.color, createdAt: p.createdAt
+                    alt: p.alt, means: p.means, zasib: p.zasib, type: p.type,
+                    color: p.color, createdAt: p.createdAt
                 }))
             }, null, 2);
         }
@@ -838,18 +970,27 @@
                     geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
                     properties: {
                         id: p.id, radius: p.radius, alt: p.alt,
-                        comment: p.comment, means: p.means, color: p.color, createdAt: p.createdAt
+                        means: p.means, zasib: p.zasib, type: p.type,
+                        color: p.color, createdAt: p.createdAt
                     }
                 }))
             }, null, 2);
         }
 
+        function currentCatalogSelection() {
+            const zbyttya = getZbyttyaByName(document.getElementById('fr-means').value);
+            return {
+                means: zbyttya.name,
+                color: zbyttya.color,
+                zasib: document.getElementById('fr-zasib').value || 'Інше',
+                type: document.getElementById('fr-type').value || 'Інше'
+            };
+        }
+
         function parseTxt(text) {
             const defaultRad = parseFloat(document.getElementById('fr-default-rad').value) || 300;
             const defaultAlt = parseFloat(document.getElementById('fr-alt').value) || 0;
-            const meansName = document.getElementById('fr-means').value;
-            const means = getMeansByName(meansName);
-            const comment = document.getElementById('fr-comment').value.trim();
+            const sel = currentCatalogSelection();
             const points = [];
             text.split('\n').forEach(line => {
                 let clean = line.replace(/[\u200B-\u200D\uFEFF\u00A0]/g, ' ').trim();
@@ -860,7 +1001,6 @@
                     const lat = parseFloat(m[0]);
                     const lon = parseFloat(m[1]);
                     const third = m[2] ? parseFloat(m[2]) : NaN;
-                    // третє число: якщо схоже на висоту (<10000 і не радіус за замовч.), беремо як alt
                     let alt = defaultAlt;
                     let radius = defaultRad;
                     if (!isNaN(third)) {
@@ -870,8 +1010,9 @@
                     if (!isNaN(lat) && !isNaN(lon)) {
                         points.push(normalizePoint({
                             id: Date.now() + Math.random(),
-                            lat, lon, radius, alt, comment,
-                            means: means.name, color: means.color, createdAt: Date.now()
+                            lat, lon, radius, alt,
+                            means: sel.means, zasib: sel.zasib, type: sel.type,
+                            color: sel.color, createdAt: Date.now()
                         }));
                     }
                 }
@@ -898,6 +1039,8 @@
                     alt: f.properties?.alt,
                     comment: f.properties?.comment,
                     means: f.properties?.means,
+                    zasib: f.properties?.zasib,
+                    type: f.properties?.type,
                     color: f.properties?.color,
                     createdAt: f.properties?.createdAt
                 }));
@@ -1075,7 +1218,7 @@
             if (mapType === 'google') {
                 visible.forEach(pt => {
                     const position = { lat: pt.lat, lng: pt.lon };
-                    const color = pt.color || getMeansByName(pt.means).color;
+                    const color = pt.color || getZbyttyaByName(pt.means).color;
                     const altLabel = `${pt.alt || 0}`;
 
                     const marker = new google.maps.Marker({
@@ -1096,7 +1239,7 @@
                             strokeWeight: 1.5,
                             labelOrigin: new google.maps.Point(0, 0)
                         },
-                        title: `${pt.means} · ${pt.alt || 0}м${pt.comment ? ' · ' + pt.comment : ''}`,
+                        title: `Збиття: ${pt.means} · Засіб: ${pt.zasib || '-'} · Тип: ${pt.type || '-'} · ${pt.alt || 0}м`,
                         zIndex: 150
                     });
 
@@ -1115,6 +1258,7 @@
 
                     overlayObjects.push(marker, circle);
 
+                    // Над точкою — назва збиття (кольорова категорія)
                     const meansOv = createGoogleMeansOverlay(
                         new google.maps.LatLng(pt.lat, pt.lon),
                         pt.means || ''
@@ -1125,7 +1269,7 @@
             }
 
             visible.forEach(pt => {
-                const color = pt.color || getMeansByName(pt.means).color;
+                const color = pt.color || getZbyttyaByName(pt.means).color;
                 const rgba = hexToRgbA(color, 1);
                 const fill = hexToRgbA(color, 0.25);
                 const white = { red: 1, green: 1, blue: 1, alpha: 1 };
@@ -1238,14 +1382,11 @@
             const countEl = document.getElementById('fr-count');
             if (countEl) {
                 const time = getTimeMode();
-                const means = document.getElementById('fr-means-filter').value;
                 const timeLabel = ({ all: 'усі', day: '24 год', week: 'тиждень', month: 'місяць' })[time] || time;
-                const meansLabel = means === 'all' ? 'усі засоби' : means;
                 const timed = countByTimeFilter(time);
-                // Лічильник завжди від часового фільтра (+ інші фільтри в «показано»)
                 countEl.textContent = time === 'all'
-                    ? `Показано: ${visible.length} з ${poiStore.length} · період: усі · ${meansLabel}`
-                    : `За період (${timeLabel}): ${timed} з ${poiStore.length} · показано: ${visible.length} · ${meansLabel}`;
+                    ? `Показано: ${visible.length} з ${poiStore.length} · період: усі`
+                    : `За період (${timeLabel}): ${timed} з ${poiStore.length} · показано: ${visible.length}`;
             }
 
             if (!visible.length) {
@@ -1276,14 +1417,12 @@
                 line1.appendChild(document.createTextNode(` · ${pt.means}`));
                 main.appendChild(line1);
                 main.appendChild(document.createElement('br'));
+                const meta = document.createElement('span');
+                meta.style.color = '#fde68a';
+                meta.textContent = `засіб: ${pt.zasib || '-'} · тип: ${pt.type || '-'}`;
+                main.appendChild(meta);
+                main.appendChild(document.createElement('br'));
                 main.appendChild(document.createTextNode(coord));
-                if (pt.comment) {
-                    main.appendChild(document.createElement('br'));
-                    const cmt = document.createElement('span');
-                    cmt.style.color = '#fde68a';
-                    cmt.textContent = pt.comment;
-                    main.appendChild(cmt);
-                }
 
                 const actions = document.createElement('div');
                 actions.className = 'fr-item-actions';
@@ -1359,14 +1498,13 @@
         function addPointAt(lat, lon) {
             const rad = parseFloat(document.getElementById('fr-default-rad').value) || 300;
             const alt = parseFloat(document.getElementById('fr-alt').value) || 0;
-            const comment = document.getElementById('fr-comment').value.trim();
-            const means = getMeansByName(document.getElementById('fr-means').value);
+            const sel = currentCatalogSelection();
             saveData([...poiStore, normalizePoint({
                 id: Date.now() + Math.random(),
-                lat, lon, radius: rad, alt, comment,
-                means: means.name, color: means.color, createdAt: Date.now()
+                lat, lon, radius: rad, alt,
+                means: sel.means, zasib: sel.zasib, type: sel.type,
+                color: sel.color, createdAt: Date.now()
             })]);
-            document.getElementById('fr-comment').value = '';
         }
 
         // ----- Події UI -----
@@ -1376,7 +1514,6 @@
             if (newPoints.length) {
                 saveData([...poiStore, ...newPoints]);
                 document.getElementById('fr-input').value = '';
-                document.getElementById('fr-comment').value = '';
             }
         };
 
@@ -1389,7 +1526,7 @@
         showPointsEl.addEventListener('change', onFilterChange);
         showPointsEl.addEventListener('input', onFilterChange);
 
-        ['fr-time-filter', 'fr-means-filter'].forEach(id => {
+        ['fr-time-filter', 'fr-means-filter', 'fr-zasib-filter', 'fr-type-filter'].forEach(id => {
             const el = document.getElementById(id);
             el.addEventListener('change', onFilterChange);
             el.addEventListener('input', onFilterChange);
@@ -1403,26 +1540,35 @@
         document.getElementById('fr-alt').addEventListener('change', () => saveSettings());
         document.getElementById('fr-default-rad').addEventListener('change', () => saveSettings());
 
-        document.getElementById('fr-means-add').onclick = () => {
-            const name = document.getElementById('fr-means-new-name').value.trim();
-            const color = document.getElementById('fr-means-new-color').value;
+        function addNamedItem(listKey, inputId, selectId, emptyMsg, existsMsg) {
+            const name = document.getElementById(inputId).value.trim();
             if (!name) {
-                alert('Вкажіть назву засобу.');
+                alert(emptyMsg);
                 return;
             }
-            if (settings.means.some(m => m.name.toLowerCase() === name.toLowerCase())) {
-                alert('Такий засіб уже є.');
+            if (settings[listKey].some(m => m.name.toLowerCase() === name.toLowerCase())) {
+                alert(existsMsg);
                 return;
             }
-            settings.means.push({
-                id: 'm_' + Date.now(),
-                name,
-                color
-            });
-            document.getElementById('fr-means-new-name').value = '';
+            const item = { id: listKey[0] + '_' + Date.now(), name };
+            if (listKey === 'means') {
+                item.color = document.getElementById('fr-means-new-color').value;
+            }
+            settings[listKey].push(item);
+            document.getElementById(inputId).value = '';
             saveSettings();
-            fillMeansSelects();
-            document.getElementById('fr-means').value = name;
+            fillCatalogSelects();
+            document.getElementById(selectId).value = name;
+        }
+
+        document.getElementById('fr-means-add').onclick = () => {
+            addNamedItem('means', 'fr-means-new-name', 'fr-means', 'Вкажіть назву збиття.', 'Таке збиття уже є.');
+        };
+        document.getElementById('fr-zasib-add').onclick = () => {
+            addNamedItem('zasibs', 'fr-zasib-new-name', 'fr-zasib', 'Вкажіть назву засобу.', 'Такий засіб уже є.');
+        };
+        document.getElementById('fr-type-add').onclick = () => {
+            addNamedItem('types', 'fr-type-new-name', 'fr-type', 'Вкажіть назву типу.', 'Такий тип уже є.');
         };
 
         const copyBtn = document.getElementById('fr-copy');
