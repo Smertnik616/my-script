@@ -415,11 +415,25 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(points)
                 });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const bodyText = await res.text();
+                let bodyJson = null;
+                try { bodyJson = JSON.parse(bodyText); } catch (_) { /* ignore */ }
+
+                if (!res.ok || bodyJson?.error) {
+                    const errMsg = bodyJson?.error || `HTTP ${res.status}`;
+                    if (String(errMsg).toLowerCase().includes('permission')) {
+                        syncEl.textContent = 'Firebase: немає доступу (перевір Rules)';
+                    } else {
+                        syncEl.textContent = 'Firebase: помилка запису';
+                    }
+                    syncEl.className = 'fr-sync err';
+                    console.warn('[FALCONROUTE] Firebase PUT failed:', errMsg);
+                    return;
+                }
                 syncEl.textContent = 'Firebase: синхронізовано';
                 syncEl.className = 'fr-sync on';
             } catch (err) {
-                syncEl.textContent = 'Firebase: помилка запису';
+                syncEl.textContent = 'Firebase: помилка мережі';
                 syncEl.className = 'fr-sync err';
                 console.warn('[FALCONROUTE] Firebase PUT failed:', err);
             }
