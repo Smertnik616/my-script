@@ -453,7 +453,8 @@
                 #falcon-route-ui .fr-body > * { width: 100%; box-sizing: border-box; margin: 0 0 8px 0; flex: none !important; flex-shrink: 0 !important; }
                 #falcon-route-ui .fr-body > *:not(.fr-list) { max-height: none !important; }
                 #falcon-route-ui .fr-body > *:last-child { margin-bottom: 0; }
-                #falcon-route-ui input, #falcon-route-ui select, #falcon-route-ui textarea, #falcon-route-ui button {
+                #falcon-route-ui input:not([type="checkbox"]):not([type="color"]),
+                #falcon-route-ui select, #falcon-route-ui textarea, #falcon-route-ui button {
                     -webkit-appearance: none !important; appearance: none !important;
                     box-sizing: border-box !important; max-height: none !important; flex-shrink: 0 !important;
                     font-size: 12px !important; line-height: 1.35 !important;
@@ -461,12 +462,19 @@
                 #falcon-route-ui textarea { width: 100% !important; height: 96px !important; min-height: 96px !important; background: #0f1015; color: #00ffcc; border: 1px solid #333; border-radius: 4px; padding: 8px !important; font-family: monospace; resize: vertical; }
                 #falcon-route-ui .fr-row { display: flex !important; justify-content: space-between; align-items: center; gap: 8px; min-height: 32px; }
                 #falcon-route-ui .fr-row > label { flex: 0 0 auto; }
-                #falcon-route-ui input { background: #0f1015; color: #fff; border: 1px solid #333; border-radius: 4px; padding: 6px 8px !important; min-height: 32px !important; height: 32px !important; }
-                #falcon-route-ui select { background: #0f1015; color: #fff; border: 1px solid #333; border-radius: 4px; padding: 6px 8px !important; min-height: 32px !important; height: 32px !important; }
+                #falcon-route-ui input:not([type="checkbox"]):not([type="color"]) { background: #0f1015; color: #fff; border: 1px solid #333; border-radius: 4px; padding: 6px 8px !important; min-height: 32px !important; height: 32px !important; }
+                #falcon-route-ui select { background: #0f1015; color: #fff; border: 1px solid #333; border-radius: 4px; padding: 6px 8px !important; min-height: 32px !important; height: 32px !important; cursor: pointer; pointer-events: auto !important; }
                 #falcon-route-ui input[type="number"] { width: 78px; text-align: center; }
                 #falcon-route-ui input[type="text"] { flex: 1 1 auto; min-width: 0; width: auto; }
                 #falcon-route-ui input[type="color"] { width: 36px !important; height: 32px !important; min-height: 32px !important; padding: 0 !important; border: none; background: none; cursor: pointer; }
-                #falcon-route-ui input[type="checkbox"] { width: 16px !important; height: 16px !important; min-height: 16px !important; padding: 0 !important; }
+                #falcon-route-ui input[type="checkbox"] {
+                    -webkit-appearance: auto !important; appearance: auto !important;
+                    width: 18px !important; height: 18px !important; min-width: 18px !important; min-height: 18px !important;
+                    margin: 0 8px 0 0 !important; padding: 0 !important; flex: 0 0 18px !important;
+                    accent-color: #3b82f6; cursor: pointer; pointer-events: auto !important;
+                    background: none !important; border: none !important; position: relative; z-index: 2;
+                }
+                #falcon-route-ui .fr-check { display: flex !important; align-items: center; gap: 6px; color: #d1d5db; cursor: pointer; user-select: none; pointer-events: auto !important; }
                 #falcon-route-ui .fr-row select, #falcon-route-ui select { flex: 1 1 auto; min-width: 0; width: auto; }
                 #falcon-route-ui .fr-grid { display: grid !important; grid-template-columns: 1fr 1fr; gap: 6px; }
                 #falcon-route-ui .fr-btn { background: #2a2d3d; color: #fff; border: none; padding: 8px 10px !important; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px !important; min-height: 34px !important; height: auto !important; }
@@ -490,7 +498,6 @@
                 #falcon-route-ui .fr-sync.err { color: #f87171; }
                 #falcon-route-ui .fr-legend { display: flex; flex-wrap: wrap; gap: 6px; }
                 #falcon-route-ui .fr-legend span { display: inline-flex; align-items: center; gap: 4px; background: #0f1015; border: 1px solid #252836; border-radius: 4px; padding: 2px 6px; font-size: 10px; }
-                #falcon-route-ui .fr-check { display: flex; align-items: center; gap: 6px; color: #d1d5db; }
                 #falcon-route-ui .fr-means-row { display: flex; gap: 4px; align-items: center; }
                 #falcon-route-ui .fr-means-list { display: flex; flex-direction: column; gap: 4px; max-height: 110px; overflow-y: auto; }
                 #falcon-route-ui details.fr-details > summary { cursor: pointer; color: #93c5fd; font-weight: bold; list-style: none; }
@@ -750,10 +757,12 @@
         function passesTimeFilter(pt) {
             const mode = document.getElementById('fr-time-filter').value;
             if (mode === 'all') return true;
-            const age = Date.now() - (pt.createdAt || 0);
-            if (mode === 'day') return age <= 86400000;
-            if (mode === 'week') return age <= 7 * 86400000;
-            if (mode === 'month') return age <= 30 * 86400000;
+            const created = Number(pt.createdAt);
+            if (!Number.isFinite(created) || created <= 0) return false;
+            const age = Date.now() - created;
+            if (mode === 'day') return age >= 0 && age <= 86400000;
+            if (mode === 'week') return age >= 0 && age <= 7 * 86400000;
+            if (mode === 'month') return age >= 0 && age <= 30 * 86400000;
             return true;
         }
 
@@ -1195,9 +1204,11 @@
             const visible = getVisiblePoints();
             const countEl = document.getElementById('fr-count');
             if (countEl) {
-                countEl.textContent = visible.length === poiStore.length
-                    ? `Точок у списку: ${visible.length}`
-                    : `У списку: ${visible.length} з ${poiStore.length} (фільтр)`;
+                const time = document.getElementById('fr-time-filter').value;
+                const means = document.getElementById('fr-means-filter').value;
+                const timeLabel = ({ all: 'усі', day: '24год', week: 'тиждень', month: 'місяць' })[time] || time;
+                const meansLabel = means === 'all' ? 'усі засоби' : means;
+                countEl.textContent = `У списку: ${visible.length} з ${poiStore.length} · ${timeLabel} · ${meansLabel}`;
             }
 
             if (!visible.length) {
@@ -1332,13 +1343,28 @@
             }
         };
 
-        document.getElementById('fr-show-points').onchange = () => { saveSettings(); refreshUI(); };
-        document.getElementById('fr-time-filter').onchange = () => { saveSettings(); refreshUI(); };
-        document.getElementById('fr-means-filter').onchange = () => { saveSettings(); refreshUI(); };
-        document.getElementById('fr-coord-format').onchange = () => { saveSettings(); renderList(); };
-        document.getElementById('fr-corridor-w').onchange = () => { saveSettings(); refreshUI(); };
-        document.getElementById('fr-alt').onchange = () => saveSettings();
-        document.getElementById('fr-default-rad').onchange = () => saveSettings();
+        function onFilterChange() {
+            saveSettings();
+            refreshUI();
+        }
+
+        const showPointsEl = document.getElementById('fr-show-points');
+        showPointsEl.addEventListener('change', onFilterChange);
+        showPointsEl.addEventListener('input', onFilterChange);
+
+        ['fr-time-filter', 'fr-means-filter'].forEach(id => {
+            const el = document.getElementById(id);
+            el.addEventListener('change', onFilterChange);
+            el.addEventListener('input', onFilterChange);
+        });
+
+        document.getElementById('fr-coord-format').addEventListener('change', () => {
+            saveSettings();
+            renderList();
+        });
+        document.getElementById('fr-corridor-w').addEventListener('change', onFilterChange);
+        document.getElementById('fr-alt').addEventListener('change', () => saveSettings());
+        document.getElementById('fr-default-rad').addEventListener('change', () => saveSettings());
 
         document.getElementById('fr-means-add').onclick = () => {
             const name = document.getElementById('fr-means-new-name').value.trim();
