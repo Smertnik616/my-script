@@ -59,23 +59,59 @@
         return null;
     }
 
+    function findGoogleMapFromDomNode(startEl) {
+        let el = startEl;
+        while (el && el !== document.body && el !== document.documentElement) {
+            for (const key of Object.keys(el)) {
+                try {
+                    const val = el[key];
+                    if (isGoogleMap(val)) return val;
+                    if (val && isGoogleMap(val.map)) return val.map;
+                    if (val && isGoogleMap(val.__gm?.map)) return val.__gm.map;
+                } catch (_) { /* ignore */ }
+            }
+
+            const fiberKey = Object.keys(el).find(k =>
+                k.startsWith('__reactFiber$') || k.startsWith('__reactContainer')
+            );
+            if (fiberKey) {
+                const found = findGoogleMapInFiber(el[fiberKey]);
+                if (found) return found;
+            }
+            el = el.parentElement;
+        }
+        return null;
+    }
+
     function getGoogleMap() {
-        if (!window.google?.maps?.event) return null;
+        if (!window.google?.maps?.Map) return null;
 
         // Глобальні змінні
-        if (isGoogleMap(window.map)) return window.map;
-        if (isGoogleMap(window.googleMap)) return window.googleMap;
-        if (isGoogleMap(window.r2d2Map)) return window.r2d2Map;
+        const globals = [
+            window.map, window.googleMap, window.r2d2Map, window.gMap,
+            window.__map, window.mapInstance, window.MAP
+        ];
+        for (const g of globals) {
+            if (isGoogleMap(g)) return g;
+        }
 
-        // React root (#root) — основний шлях Phoenix / R2D2
-        const root = document.getElementById('root');
-        if (root) {
+        // React root (#root / #app / #__next) — основний шлях Phoenix / R2D2
+        for (const id of ['root', 'app', '__next', 'main']) {
+            const root = document.getElementById(id);
+            if (!root) continue;
             const key = Object.keys(root).find(k => k.startsWith('__reactContainer'))
                 || Object.keys(root).find(k => k.startsWith('__reactFiber'));
             if (key) {
                 const found = findGoogleMapInFiber(root[key]);
                 if (found) return found;
             }
+        }
+
+        // Через DOM Google Maps (.gm-style)
+        const gm = document.querySelector('.gm-style');
+        if (gm) {
+            const found = findGoogleMapFromDomNode(gm);
+            if (found) return found;
         }
 
         // Додаткове сканування div з React Fiber
@@ -142,7 +178,27 @@
             setTimeout(() => boot(attempt + 1), 500);
             return;
         }
-        alert('❌ Помилка: карту не знайдено (Google Maps / Cesium). Відкрийте карту і запустіть скрипт знову.');
+        // Fallback: попросити клік по карті (як у старій інструкції), без старого Cesium-алерту
+        console.warn('[FALCONROUTE] Автопошук не знайшов карту. Клацніть один раз по карті...');
+        const tip = document.createElement('div');
+        tip.id = 'falcon-route-tip';
+        tip.textContent = '🦅 FALCONROUTE: клацніть один раз по карті для підключення';
+        tip.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:99999999;background:#1e3a8a;color:#fff;padding:10px 14px;border-radius:8px;font:12px/1.3 system-ui;box-shadow:0 4px 16px rgba(0,0,0,.5)';
+        document.body.appendChild(tip);
+
+        const onClick = (e) => {
+            const fromClick = findGoogleMapFromDomNode(e.target) || getGoogleMap();
+            const cesium = getCesiumViewer();
+            const found = fromClick
+                ? { type: 'google', map: fromClick }
+                : (cesium ? { type: 'cesium', map: cesium } : null);
+
+            if (!found) return; // чекаємо наступний клік
+            document.removeEventListener('click', onClick, true);
+            tip.remove();
+            initApp(found);
+        };
+        document.addEventListener('click', onClick, true);
     }
 
     function initApp(engine) {
