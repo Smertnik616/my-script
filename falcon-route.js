@@ -527,7 +527,7 @@
                 #falcon-route-ui details.fr-details > summary { cursor: pointer; color: #93c5fd; font-weight: bold; list-style: none; }
                 #falcon-route-ui details.fr-details > summary::-webkit-details-marker { display: none; }
                 .fr-map-label { position: absolute; transform: translate(-50%, calc(-100% - 14px)); pointer-events: none; white-space: nowrap; text-align: center; z-index: 1; }
-                .fr-map-label .fr-cmt { background: rgba(15,16,21,.92); color: #fde68a; font: 10px/1.2 system-ui; padding: 2px 5px; border-radius: 3px; border: 1px solid rgba(253,230,138,.45); max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+                .fr-map-label .fr-means-tag { background: rgba(15,16,21,.92); color: #fde68a; font: bold 10px/1.2 system-ui; padding: 2px 5px; border-radius: 3px; border: 1px solid rgba(253,230,138,.45); max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
             </style>
             <div class="fr-head" id="fr-drag">
                 <span>🦅 FALCONROUTE v2 (Збиття)</span>
@@ -976,9 +976,9 @@
             corridorOverlays = [];
         }
 
-        function createGoogleCommentOverlay(position, comment) {
-            if (!comment) return null;
-            class FrComment extends google.maps.OverlayView {
+        function createGoogleMeansOverlay(position, meansName) {
+            if (!meansName) return null;
+            class FrMeansLabel extends google.maps.OverlayView {
                 constructor() {
                     super();
                     this.position = position;
@@ -987,10 +987,10 @@
                 onAdd() {
                     this.div = document.createElement('div');
                     this.div.className = 'fr-map-label';
-                    const cmt = document.createElement('div');
-                    cmt.className = 'fr-cmt';
-                    cmt.textContent = comment;
-                    this.div.appendChild(cmt);
+                    const tag = document.createElement('div');
+                    tag.className = 'fr-means-tag';
+                    tag.textContent = meansName;
+                    this.div.appendChild(tag);
                     this.getPanes().floatPane.appendChild(this.div);
                 }
                 draw() {
@@ -1006,7 +1006,7 @@
                     this.div = null;
                 }
             }
-            const ov = new FrComment();
+            const ov = new FrMeansLabel();
             ov.setMap(map);
             return ov;
         }
@@ -1115,11 +1115,11 @@
 
                     overlayObjects.push(marker, circle);
 
-                    const commentOv = createGoogleCommentOverlay(
+                    const meansOv = createGoogleMeansOverlay(
                         new google.maps.LatLng(pt.lat, pt.lon),
-                        pt.comment || ''
+                        pt.means || ''
                     );
-                    if (commentOv) labelOverlays.push(commentOv);
+                    if (meansOv) labelOverlays.push(meansOv);
                 });
                 return;
             }
@@ -1160,12 +1160,12 @@
                 });
                 overlayObjects.push(entity);
 
-                if (pt.comment) {
-                    const cmtEnt = map.entities.add({
+                if (pt.means) {
+                    const meansEnt = map.entities.add({
                         position: pos,
                         label: {
-                            text: pt.comment,
-                            font: '10px sans-serif',
+                            text: pt.means,
+                            font: 'bold 10px sans-serif',
                             fillColor: { red: 0.99, green: 0.9, blue: 0.54, alpha: 1 },
                             outlineColor: black,
                             outlineWidth: 2,
@@ -1180,7 +1180,7 @@
                             disableDepthTestDistance: Number.POSITIVE_INFINITY
                         }
                     });
-                    overlayObjects.push(cmtEnt);
+                    overlayObjects.push(meansEnt);
                 }
             });
             map.scene?.requestRender?.();
