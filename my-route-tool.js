@@ -445,7 +445,8 @@
                 #falcon-route-ui .fr-body { padding: 10px; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
                 #falcon-route-ui .fr-body.hidden { display: none; }
                 #falcon-route-ui.fr-collapsed { height: auto !important; max-height: none; }
-                #falcon-route-ui .fr-body > * { width: 100%; box-sizing: border-box; margin: 0 0 8px 0; flex: none !important; flex-shrink: 0 !important; max-height: none !important; }
+                #falcon-route-ui .fr-body > * { width: 100%; box-sizing: border-box; margin: 0 0 8px 0; flex: none !important; flex-shrink: 0 !important; }
+                #falcon-route-ui .fr-body > *:not(.fr-list) { max-height: none !important; }
                 #falcon-route-ui .fr-body > *:last-child { margin-bottom: 0; }
                 #falcon-route-ui input, #falcon-route-ui select, #falcon-route-ui textarea, #falcon-route-ui button {
                     -webkit-appearance: none !important; appearance: none !important;
@@ -471,7 +472,7 @@
                 #falcon-route-ui .fr-btn-danger:hover { background: #dc2626; color: #fff; }
                 #falcon-route-ui .fr-btn-wide { width: 100%; }
                 #falcon-route-ui .fr-btn-ok { background: #14532d; color: #86efac; }
-                #falcon-route-ui .fr-list { max-height: 140px; overflow-y: auto; background: #0f1015; border: 1px solid #252836; border-radius: 4px; padding: 4px; }
+                #falcon-route-ui .fr-list { max-height: 110px !important; height: 110px !important; overflow-x: hidden; overflow-y: auto !important; background: #0f1015; border: 1px solid #252836; border-radius: 4px; padding: 4px; flex-shrink: 0 !important; }
                 #falcon-route-ui .fr-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; padding: 4px; border-bottom: 1px solid #1a1c26; font-family: monospace; font-size: 10px; }
                 #falcon-route-ui .fr-item-main { flex: 1; min-width: 0; word-break: break-all; }
                 #falcon-route-ui .fr-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
