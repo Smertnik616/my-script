@@ -480,7 +480,7 @@
                 .fr-map-label .fr-cmt { margin-top: 2px; background: rgba(15,16,21,.9); color: #fde68a; font: 10px/1.2 system-ui; padding: 1px 4px; border-radius: 3px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
             </style>
             <div class="fr-head" id="fr-drag">
-                <span>🦅 FALCONROUTE (Збиття)</span>
+                <span>🦅 FALCONROUTE v2 (Збиття)</span>
                 <span id="fr-toggle" style="cursor:pointer">─</span>
             </div>
             <div class="fr-body" id="fr-main">
@@ -1497,8 +1497,10 @@
 
         refreshUI();
         listenToCloudUpdates();
-        console.log(`🦅 FALCONROUTE завантажено успішно! (${mapType === 'google' ? 'Google Maps / R2D2' : 'Cesium'})`);
+        console.log(`🦅 FALCONROUTE v2 завантажено! (${mapType === 'google' ? 'Google Maps / R2D2' : 'Cesium'}) — коридор/засоби/фільтри`);
     }
 
+    document.getElementById('falcon-route-ui')?.remove();
+    document.getElementById('falcon-route-tip')?.remove();
     boot(0);
 })();
