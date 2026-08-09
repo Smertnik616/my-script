@@ -1,9 +1,9 @@
 // Вставте ЦЕЙ код у консоль на сторінці карти:
 (async () => {
-    // Закріплений коміт — без старого кешу CDN
+    // Спочатку свіжий main (без кешу), потім запасний URL
     const urls = [
-        'https://cdn.jsdelivr.net/gh/Smertnik616/my-script@aef39be/falcon-route.js',
-        'https://cdn.jsdelivr.net/gh/Smertnik616/my-script@main/falcon-route.js?v=' + Date.now()
+        'https://cdn.jsdelivr.net/gh/Smertnik616/my-script@main/falcon-route.js?v=' + Date.now(),
+        'https://raw.githubusercontent.com/Smertnik616/my-script/main/falcon-route.js?v=' + Date.now()
     ];
 
     let code = '';
@@ -12,7 +12,7 @@
             const res = await fetch(url, { cache: 'no-store' });
             if (!res.ok) continue;
             code = await res.text();
-            if (code.includes('getGoogleMap') && !code.includes('Обʼєкт Cesium не знайдено')) break;
+            if (code.includes('getGoogleMap') && code.includes('FALCONROUTE')) break;
             code = '';
         } catch (_) { /* try next */ }
     }
