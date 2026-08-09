@@ -442,18 +442,28 @@
         const htmlLayout = `
             <style>
                 #falcon-route-ui .fr-head { background: #222430; padding: 10px 12px; font-weight: bold; color: #4da6ff; display: flex; justify-content: space-between; align-items: center; cursor: move; border-top-left-radius: 8px; border-top-right-radius: 8px; flex-shrink: 0; }
-                #falcon-route-ui .fr-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: scroll; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+                #falcon-route-ui .fr-body { padding: 10px; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
                 #falcon-route-ui .fr-body.hidden { display: none; }
                 #falcon-route-ui.fr-collapsed { height: auto !important; max-height: none; }
-                #falcon-route-ui textarea { width: 100%; height: 90px; min-height: 90px; flex-shrink: 0; background: #0f1015; color: #00ffcc; border: 1px solid #333; border-radius: 4px; padding: 6px; font-family: monospace; box-sizing: border-box; resize: vertical; }
-                #falcon-route-ui .fr-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-                #falcon-route-ui input, #falcon-route-ui select { background: #0f1015; color: #fff; border: 1px solid #333; border-radius: 4px; padding: 4px; }
+                #falcon-route-ui .fr-body > * { width: 100%; box-sizing: border-box; margin: 0 0 8px 0; flex: none !important; flex-shrink: 0 !important; max-height: none !important; }
+                #falcon-route-ui .fr-body > *:last-child { margin-bottom: 0; }
+                #falcon-route-ui input, #falcon-route-ui select, #falcon-route-ui textarea, #falcon-route-ui button {
+                    -webkit-appearance: none !important; appearance: none !important;
+                    box-sizing: border-box !important; max-height: none !important; flex-shrink: 0 !important;
+                    font-size: 12px !important; line-height: 1.35 !important;
+                }
+                #falcon-route-ui textarea { width: 100% !important; height: 96px !important; min-height: 96px !important; background: #0f1015; color: #00ffcc; border: 1px solid #333; border-radius: 4px; padding: 8px !important; font-family: monospace; resize: vertical; }
+                #falcon-route-ui .fr-row { display: flex !important; justify-content: space-between; align-items: center; gap: 8px; min-height: 32px; }
+                #falcon-route-ui .fr-row > label { flex: 0 0 auto; }
+                #falcon-route-ui input { background: #0f1015; color: #fff; border: 1px solid #333; border-radius: 4px; padding: 6px 8px !important; min-height: 32px !important; height: 32px !important; }
+                #falcon-route-ui select { background: #0f1015; color: #fff; border: 1px solid #333; border-radius: 4px; padding: 6px 8px !important; min-height: 32px !important; height: 32px !important; }
                 #falcon-route-ui input[type="number"] { width: 78px; text-align: center; }
-                #falcon-route-ui input[type="text"] { flex: 1; min-width: 0; }
-                #falcon-route-ui input[type="color"] { width: 36px; height: 26px; padding: 0; border: none; background: none; cursor: pointer; }
-                #falcon-route-ui select { flex: 1; min-width: 0; }
-                #falcon-route-ui .fr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-                #falcon-route-ui .fr-btn { background: #2a2d3d; color: #fff; border: none; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; }
+                #falcon-route-ui input[type="text"] { flex: 1 1 auto; min-width: 0; width: auto; }
+                #falcon-route-ui input[type="color"] { width: 36px !important; height: 32px !important; min-height: 32px !important; padding: 0 !important; border: none; background: none; cursor: pointer; }
+                #falcon-route-ui input[type="checkbox"] { width: 16px !important; height: 16px !important; min-height: 16px !important; padding: 0 !important; }
+                #falcon-route-ui .fr-row select, #falcon-route-ui select { flex: 1 1 auto; min-width: 0; width: auto; }
+                #falcon-route-ui .fr-grid { display: grid !important; grid-template-columns: 1fr 1fr; gap: 6px; }
+                #falcon-route-ui .fr-btn { background: #2a2d3d; color: #fff; border: none; padding: 8px 10px !important; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px !important; min-height: 34px !important; height: auto !important; }
                 #falcon-route-ui .fr-btn:hover { background: #3b82f6; }
                 #falcon-route-ui .fr-btn-pick { background: #1e3a8a; color: #60a5fa; border: 1px solid #2563eb; width: 100%; }
                 #falcon-route-ui .fr-btn-pick.active { background: #d97706; color: #fff; }
@@ -466,7 +476,7 @@
                 #falcon-route-ui .fr-item-main { flex: 1; min-width: 0; word-break: break-all; }
                 #falcon-route-ui .fr-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
                 #falcon-route-ui .fr-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
-                #falcon-route-ui .fr-section { border-top: 1px solid #2a2d3d; padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+                #falcon-route-ui .fr-section { border-top: 1px solid #2a2d3d; padding-top: 8px; display: flex !important; flex-direction: column; gap: 6px; }
                 #falcon-route-ui .fr-label { color: #9ca3af; font-size: 11px; }
                 #falcon-route-ui .fr-sync { font-size: 10px; color: #6b7280; min-height: 14px; }
                 #falcon-route-ui .fr-sync.on { color: #4ade80; }
