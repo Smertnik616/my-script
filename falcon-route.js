@@ -495,9 +495,8 @@
                 #falcon-route-ui .fr-means-list { display: flex; flex-direction: column; gap: 4px; max-height: 110px; overflow-y: auto; }
                 #falcon-route-ui details.fr-details > summary { cursor: pointer; color: #93c5fd; font-weight: bold; list-style: none; }
                 #falcon-route-ui details.fr-details > summary::-webkit-details-marker { display: none; }
-                .fr-map-label { position: absolute; transform: translate(-50%, -120%); pointer-events: none; white-space: nowrap; text-align: center; z-index: 1; }
-                .fr-map-label .fr-alt { background: rgba(0,0,0,.75); color: #fff; font: bold 11px/1.2 system-ui; padding: 2px 5px; border-radius: 3px; border: 1px solid #fff; }
-                .fr-map-label .fr-cmt { margin-top: 2px; background: rgba(15,16,21,.9); color: #fde68a; font: 10px/1.2 system-ui; padding: 1px 4px; border-radius: 3px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+                .fr-map-label { position: absolute; transform: translate(-50%, calc(-100% - 14px)); pointer-events: none; white-space: nowrap; text-align: center; z-index: 1; }
+                .fr-map-label .fr-cmt { background: rgba(15,16,21,.92); color: #fde68a; font: 10px/1.2 system-ui; padding: 2px 5px; border-radius: 3px; border: 1px solid rgba(253,230,138,.45); max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
             </style>
             <div class="fr-head" id="fr-drag">
                 <span>🦅 FALCONROUTE v2 (Збиття)</span>
@@ -935,8 +934,9 @@
             corridorOverlays = [];
         }
 
-        function createGoogleLabelOverlay(position, altText, comment) {
-            class FrLabel extends google.maps.OverlayView {
+        function createGoogleCommentOverlay(position, comment) {
+            if (!comment) return null;
+            class FrComment extends google.maps.OverlayView {
                 constructor() {
                     super();
                     this.position = position;
@@ -945,17 +945,11 @@
                 onAdd() {
                     this.div = document.createElement('div');
                     this.div.className = 'fr-map-label';
-                    const alt = document.createElement('div');
-                    alt.className = 'fr-alt';
-                    alt.textContent = altText;
-                    this.div.appendChild(alt);
-                    if (comment) {
-                        const cmt = document.createElement('div');
-                        cmt.className = 'fr-cmt';
-                        cmt.textContent = comment;
-                        this.div.appendChild(cmt);
-                    }
-                    this.getPanes().overlayMouseTarget.appendChild(this.div);
+                    const cmt = document.createElement('div');
+                    cmt.className = 'fr-cmt';
+                    cmt.textContent = comment;
+                    this.div.appendChild(cmt);
+                    this.getPanes().floatPane.appendChild(this.div);
                 }
                 draw() {
                     const proj = this.getProjection();
@@ -970,7 +964,7 @@
                     this.div = null;
                 }
             }
-            const ov = new FrLabel();
+            const ov = new FrComment();
             ov.setMap(map);
             return ov;
         }
@@ -1040,17 +1034,25 @@
                 visible.forEach(pt => {
                     const position = { lat: pt.lat, lng: pt.lon };
                     const color = pt.color || getMeansByName(pt.means).color;
+                    const altLabel = `${pt.alt || 0}`;
 
                     const marker = new google.maps.Marker({
                         position,
                         map,
+                        label: {
+                            text: altLabel,
+                            color: '#ffffff',
+                            fontSize: altLabel.length > 3 ? '9px' : '10px',
+                            fontWeight: 'bold'
+                        },
                         icon: {
                             path: google.maps.SymbolPath.CIRCLE,
-                            scale: 9,
+                            scale: altLabel.length > 3 ? 14 : 12,
                             fillColor: color,
                             fillOpacity: 1,
                             strokeColor: '#fff',
-                            strokeWeight: 1.5
+                            strokeWeight: 1.5,
+                            labelOrigin: new google.maps.Point(0, 0)
                         },
                         title: `${pt.means} · ${pt.alt || 0}м${pt.comment ? ' · ' + pt.comment : ''}`,
                         zIndex: 150
@@ -1069,14 +1071,13 @@
                         zIndex: 140
                     });
 
-                    const label = createGoogleLabelOverlay(
+                    overlayObjects.push(marker, circle);
+
+                    const commentOv = createGoogleCommentOverlay(
                         new google.maps.LatLng(pt.lat, pt.lon),
-                        `${pt.alt || 0}м`,
                         pt.comment || ''
                     );
-
-                    overlayObjects.push(marker, circle);
-                    labelOverlays.push(label);
+                    if (commentOv) labelOverlays.push(commentOv);
                 });
                 return;
             }
@@ -1086,13 +1087,12 @@
                 const rgba = hexToRgbA(color, 1);
                 const fill = hexToRgbA(color, 0.25);
                 const white = { red: 1, green: 1, blue: 1, alpha: 1 };
-                const labelText = pt.comment
-                    ? `${pt.alt || 0}м\n${pt.comment}`
-                    : `${pt.alt || 0}м`;
+                const black = { red: 0, green: 0, blue: 0, alpha: 1 };
+                const pos = Cartesian3.fromDegrees(pt.lon, pt.lat);
 
                 const entity = map.entities.add({
-                    position: Cartesian3.fromDegrees(pt.lon, pt.lat),
-                    point: { pixelSize: 10, color: rgba, outlineColor: white, outlineWidth: 2 },
+                    position: pos,
+                    point: { pixelSize: 22, color: rgba, outlineColor: white, outlineWidth: 2 },
                     ellipse: {
                         semiMinorAxis: pt.radius,
                         semiMajorAxis: pt.radius,
@@ -1102,21 +1102,44 @@
                         outlineWidth: 2
                     },
                     label: {
-                        text: labelText,
-                        font: 'bold 12px sans-serif',
+                        text: `${pt.alt || 0}`,
+                        font: 'bold 11px sans-serif',
                         fillColor: white,
-                        outlineColor: { red: 0, green: 0, blue: 0, alpha: 1 },
+                        outlineColor: black,
                         outlineWidth: 3,
                         style: window.Cesium?.LabelStyle?.FILL_AND_OUTLINE,
-                        verticalOrigin: window.Cesium?.VerticalOrigin?.BOTTOM,
+                        verticalOrigin: window.Cesium?.VerticalOrigin?.CENTER,
+                        horizontalOrigin: window.Cesium?.HorizontalOrigin?.CENTER,
                         pixelOffset: window.Cesium?.Cartesian2
-                            ? new window.Cesium.Cartesian2(0, -14)
+                            ? new window.Cesium.Cartesian2(0, 0)
                             : undefined,
-                        showBackground: true,
-                        backgroundColor: { red: 0, green: 0, blue: 0, alpha: 0.65 }
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
                 });
                 overlayObjects.push(entity);
+
+                if (pt.comment) {
+                    const cmtEnt = map.entities.add({
+                        position: pos,
+                        label: {
+                            text: pt.comment,
+                            font: '10px sans-serif',
+                            fillColor: { red: 0.99, green: 0.9, blue: 0.54, alpha: 1 },
+                            outlineColor: black,
+                            outlineWidth: 2,
+                            style: window.Cesium?.LabelStyle?.FILL_AND_OUTLINE,
+                            verticalOrigin: window.Cesium?.VerticalOrigin?.BOTTOM,
+                            horizontalOrigin: window.Cesium?.HorizontalOrigin?.CENTER,
+                            pixelOffset: window.Cesium?.Cartesian2
+                                ? new window.Cesium.Cartesian2(0, -18)
+                                : undefined,
+                            showBackground: true,
+                            backgroundColor: { red: 0.06, green: 0.06, blue: 0.08, alpha: 0.9 },
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY
+                        }
+                    });
+                    overlayObjects.push(cmtEnt);
+                }
             });
             map.scene?.requestRender?.();
         }
