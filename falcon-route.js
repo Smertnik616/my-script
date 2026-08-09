@@ -445,7 +445,7 @@
                 #falcon-route-ui .fr-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: scroll; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
                 #falcon-route-ui .fr-body.hidden { display: none; }
                 #falcon-route-ui.fr-collapsed { height: auto !important; max-height: none; }
-                #falcon-route-ui textarea { width: 100%; height: 52px; background: #0f1015; color: #00ffcc; border: 1px solid #333; border-radius: 4px; padding: 6px; font-family: monospace; box-sizing: border-box; resize: vertical; }
+                #falcon-route-ui textarea { width: 100%; height: 90px; min-height: 90px; flex-shrink: 0; background: #0f1015; color: #00ffcc; border: 1px solid #333; border-radius: 4px; padding: 6px; font-family: monospace; box-sizing: border-box; resize: vertical; }
                 #falcon-route-ui .fr-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
                 #falcon-route-ui input, #falcon-route-ui select { background: #0f1015; color: #fff; border: 1px solid #333; border-radius: 4px; padding: 4px; }
                 #falcon-route-ui input[type="number"] { width: 78px; text-align: center; }
