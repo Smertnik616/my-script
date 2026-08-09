@@ -22,8 +22,7 @@
         return;
     }
     const s = document.createElement('script');
-    s.textContent = code + '
-//# sourceURL=falcon-route-v2.js';
+    s.textContent = code + '\n//# sourceURL=falcon-route-v2.js';
     document.documentElement.appendChild(s);
     console.log('🦅 FalconRoute v2 OK');
 })();
