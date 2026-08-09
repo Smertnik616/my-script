@@ -430,18 +430,21 @@
         const panel = document.createElement('div');
         panel.id = 'falcon-route-ui';
         panel.style.cssText = `
-            position: fixed; top: 30px; right: 30px; width: 360px; max-height: calc(100vh - 48px);
+            position: fixed; top: 30px; right: 30px; width: 360px;
+            height: min(92vh, calc(100vh - 40px)); max-height: calc(100vh - 40px);
             background: #181920; color: #e0e0e0; border: 1px solid #383a48;
             border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.7);
             font-family: system-ui, -apple-system, sans-serif; font-size: 12px;
             z-index: 9999999; user-select: none; display: flex; flex-direction: column;
+            overflow: hidden;
         `;
 
         const htmlLayout = `
             <style>
                 #falcon-route-ui .fr-head { background: #222430; padding: 10px 12px; font-weight: bold; color: #4da6ff; display: flex; justify-content: space-between; align-items: center; cursor: move; border-top-left-radius: 8px; border-top-right-radius: 8px; flex-shrink: 0; }
-                #falcon-route-ui .fr-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+                #falcon-route-ui .fr-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: scroll; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
                 #falcon-route-ui .fr-body.hidden { display: none; }
+                #falcon-route-ui.fr-collapsed { height: auto !important; max-height: none; }
                 #falcon-route-ui textarea { width: 100%; height: 52px; background: #0f1015; color: #00ffcc; border: 1px solid #333; border-radius: 4px; padding: 6px; font-family: monospace; box-sizing: border-box; resize: vertical; }
                 #falcon-route-ui .fr-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
                 #falcon-route-ui input, #falcon-route-ui select { background: #0f1015; color: #fff; border: 1px solid #333; border-radius: 4px; padding: 4px; }
@@ -589,10 +592,23 @@
 
         const syncEl = document.getElementById('fr-sync');
         const mainBody = document.getElementById('fr-main');
-        document.getElementById('fr-toggle').onclick = () => mainBody.classList.toggle('hidden');
+        const toggleBtn = document.getElementById('fr-toggle');
+        toggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            const closed = mainBody.classList.toggle('hidden');
+            panel.classList.toggle('fr-collapsed', closed);
+            toggleBtn.textContent = closed ? '□' : '─';
+        };
+
+        // Скрол лише в панелі — не віддавати колесо карті / не «згортати» огляд
+        const stopScrollBubble = (e) => e.stopPropagation();
+        panel.addEventListener('wheel', stopScrollBubble, { passive: true });
+        panel.addEventListener('touchmove', stopScrollBubble, { passive: true });
+        mainBody.addEventListener('wheel', stopScrollBubble, { passive: true });
 
         let isDragging = false, ox = 0, oy = 0;
         document.getElementById('fr-drag').onmousedown = (e) => {
+            if (e.target === toggleBtn || toggleBtn.contains(e.target)) return;
             isDragging = true;
             ox = e.clientX - panel.offsetLeft;
             oy = e.clientY - panel.offsetTop;
