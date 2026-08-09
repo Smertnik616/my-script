@@ -390,12 +390,25 @@
         }
     }
 
+    function resolveCreatedAt(p) {
+        const candidates = [];
+        if (p?.createdAt != null && p.createdAt !== '') {
+            const n = Number(p.createdAt);
+            if (Number.isFinite(n) && n > 1e11) candidates.push(n);
+            else {
+                const parsed = Date.parse(p.createdAt);
+                if (Number.isFinite(parsed)) candidates.push(parsed);
+            }
+        }
+        const idNum = typeof p?.id === 'number' ? p.id : Number(p?.id);
+        if (Number.isFinite(idNum) && idNum > 1e11) candidates.push(Math.floor(idNum));
+        // Найраніша мітка = реальний час додавання (після міграції createdAt міг стати «зараз»)
+        if (candidates.length) return Math.min(...candidates);
+        return Date.now();
+    }
+
     function normalizePoint(p) {
         const id = p.id || (Date.now() + Math.random());
-        // Для старих точок без createdAt — беремо час з id (Date.now()+random)
-        const createdAt = Number(p.createdAt)
-            || (typeof id === 'number' ? Math.floor(id) : Date.parse(id))
-            || Date.now();
         return {
             id,
             lat: Number(p.lat),
@@ -405,7 +418,7 @@
             comment: p.comment || '',
             means: p.means || p.weapon || 'Інше',
             color: p.color || '#ef4444',
-            createdAt
+            createdAt: resolveCreatedAt({ ...p, id })
         };
     }
 
@@ -415,6 +428,17 @@
 
         let settings = loadSettings();
         let poiStore = (JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') || []).map(normalizePoint);
+        let timestampsRepaired = false;
+        // Полагодити createdAt після міграції (щоб часовий фільтр і лічильник працювали)
+        poiStore = poiStore.map(p => {
+            const fixed = resolveCreatedAt(p);
+            if (p.createdAt !== fixed) {
+                timestampsRepaired = true;
+                return { ...p, createdAt: fixed };
+            }
+            return p;
+        });
+        if (timestampsRepaired) localStorage.setItem(STORAGE_KEY, JSON.stringify(poiStore));
         let corridor = JSON.parse(localStorage.getItem(CORRIDOR_KEY) || '[]') || [];
         let overlayObjects = [];
         let labelOverlays = [];
@@ -754,23 +778,32 @@
         document.getElementById('fr-time-filter').value = settings.timeFilter;
         fillMeansSelects();
 
-        function passesTimeFilter(pt) {
-            const mode = document.getElementById('fr-time-filter').value;
+        function getTimeMode() {
+            return document.getElementById('fr-time-filter')?.value || 'all';
+        }
+
+        function passesTimeFilter(pt, mode = getTimeMode()) {
             if (mode === 'all') return true;
-            const created = Number(pt.createdAt);
+            const created = resolveCreatedAt(pt);
             if (!Number.isFinite(created) || created <= 0) return false;
             const age = Date.now() - created;
-            if (mode === 'day') return age >= 0 && age <= 86400000;
-            if (mode === 'week') return age >= 0 && age <= 7 * 86400000;
-            if (mode === 'month') return age >= 0 && age <= 30 * 86400000;
+            if (age < 0) return false;
+            if (mode === 'day') return age <= 86400000;
+            if (mode === 'week') return age <= 7 * 86400000;
+            if (mode === 'month') return age <= 30 * 86400000;
             return true;
+        }
+
+        function countByTimeFilter(mode = getTimeMode()) {
+            return poiStore.reduce((n, pt) => n + (passesTimeFilter(pt, mode) ? 1 : 0), 0);
         }
 
         function getVisiblePoints() {
             const meansFilter = document.getElementById('fr-means-filter').value;
             const width = parseFloat(document.getElementById('fr-corridor-w').value) || 2000;
+            const timeMode = getTimeMode();
             return poiStore.filter(pt => {
-                if (!passesTimeFilter(pt)) return false;
+                if (!passesTimeFilter(pt, timeMode)) return false;
                 if (meansFilter !== 'all' && pt.means !== meansFilter) return false;
                 if (!pointInCorridor(pt, corridor, width)) return false;
                 return true;
@@ -1204,11 +1237,15 @@
             const visible = getVisiblePoints();
             const countEl = document.getElementById('fr-count');
             if (countEl) {
-                const time = document.getElementById('fr-time-filter').value;
+                const time = getTimeMode();
                 const means = document.getElementById('fr-means-filter').value;
-                const timeLabel = ({ all: 'усі', day: '24год', week: 'тиждень', month: 'місяць' })[time] || time;
+                const timeLabel = ({ all: 'усі', day: '24 год', week: 'тиждень', month: 'місяць' })[time] || time;
                 const meansLabel = means === 'all' ? 'усі засоби' : means;
-                countEl.textContent = `У списку: ${visible.length} з ${poiStore.length} · ${timeLabel} · ${meansLabel}`;
+                const timed = countByTimeFilter(time);
+                // Лічильник завжди від часового фільтра (+ інші фільтри в «показано»)
+                countEl.textContent = time === 'all'
+                    ? `Показано: ${visible.length} з ${poiStore.length} · період: усі · ${meansLabel}`
+                    : `За період (${timeLabel}): ${timed} з ${poiStore.length} · показано: ${visible.length} · ${meansLabel}`;
             }
 
             if (!visible.length) {
@@ -1553,10 +1590,16 @@
                     if (res && res.data) {
                         applyRemote = true;
                         const raw = Array.isArray(res.data) ? res.data : Object.values(res.data);
-                        poiStore = raw.map(normalizePoint);
+                        const normalized = raw.map(normalizePoint);
+                        const needRepair = normalized.some((p, i) => {
+                            const rawTs = Number(raw[i]?.createdAt);
+                            return !Number.isFinite(rawTs) || Math.abs(rawTs - p.createdAt) > 1000;
+                        });
+                        poiStore = normalized;
                         localStorage.setItem(STORAGE_KEY, JSON.stringify(poiStore));
                         refreshUI();
                         applyRemote = false;
+                        if (needRepair) pushToFirebase(poiStore);
                         syncEl.textContent = 'Firebase: онлайн';
                         syncEl.className = 'fr-sync on';
                     } else if (res && res.data === null) {
@@ -1586,6 +1629,7 @@
 
         refreshUI();
         listenToCloudUpdates();
+        if (timestampsRepaired) pushToFirebase(poiStore);
         console.log(`🦅 FALCONROUTE v2 завантажено! (${mapType === 'google' ? 'Google Maps / R2D2' : 'Cesium'}) — коридор/засоби/фільтри`);
     }
 
