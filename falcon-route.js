@@ -5,23 +5,32 @@
     const DB_URL = 'https://script-poi-default-rtdb.europe-west1.firebasedatabase.app/rooms/falcon-route-default/points.json';
     const FIREBASE_ENABLED = !DB_URL.includes('ВАШ_ПРОЄКТ');
 
-    // 1. Пошук об'єкта Cesium Viewer (підтримка SPA/React/Vue/Fiber)
+    // Покращена функція пошуку карт на базі Cesium (підтримка R2D2 / Phoenix)
     function getViewer() {
+        // 1. Стандартні змінні
         if (window.viewer?.entities) return window.viewer;
         if (window.cesiumViewer?.entities) return window.cesiumViewer;
+        if (window.r2d2Viewer?.entities) return window.r2d2Viewer;
+        if (window.mapViewer?.entities) return window.mapViewer;
 
-        const allElements = document.querySelectorAll('*');
-        for (let el of allElements) {
+        // 2. Глобальні масиви чи вкладені об'єкти системи Phoenix/R2D2
+        if (window.Cesium?.Viewer?.instances?.[0]?.entities) return window.Cesium.Viewer.instances[0];
+
+        // 3. Сканування DOM-елементів та React Fiber (для R2D2)
+        const elements = document.querySelectorAll('div, canvas');
+        for (let el of elements) {
             if (el.cesiumViewer?.entities) return el.cesiumViewer;
             if (el._cesiumViewer?.entities) return el._cesiumViewer;
 
+            // Пошук у React Fiber (часто використовується у Phoenix / R2D2)
             const reactKeys = Object.keys(el).filter(k => k.startsWith('__reactFiber$') || k.startsWith('__reactProps$'));
             for (let rKey of reactKeys) {
                 let node = el[rKey];
                 let depth = 0;
-                while (node && depth < 15) {
+                while (node && depth < 20) {
                     if (node.memoizedProps?.viewer?.entities) return node.memoizedProps.viewer;
                     if (node.stateNode?.viewer?.entities) return node.stateNode.viewer;
+                    if (node.memoizedProps?.cesiumViewer?.entities) return node.memoizedProps.cesiumViewer;
                     node = node.return;
                     depth++;
                 }
