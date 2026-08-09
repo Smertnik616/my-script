@@ -1,13 +1,29 @@
-// Вставте ЦЕЙ код у консоль на сторінці карти (обхід кешу CDN):
+// Вставте ЦЕЙ код у консоль на сторінці карти:
 (async () => {
-    const url = 'https://raw.githubusercontent.com/Smertnik616/my-script/main/falcon-route.js?t=' + Date.now();
-    const code = await (await fetch(url)).text();
-    if (!code || code.includes('Обʼєкт Cesium не знайдено')) {
-        alert('Завантажилась стара версія скрипта. Оновіть сторінку GitHub / спробуйте ще раз.');
+    // Закріплений коміт — без старого кешу CDN
+    const urls = [
+        'https://cdn.jsdelivr.net/gh/Smertnik616/my-script@aef39be/falcon-route.js',
+        'https://cdn.jsdelivr.net/gh/Smertnik616/my-script@main/falcon-route.js?v=' + Date.now()
+    ];
+
+    let code = '';
+    for (const url of urls) {
+        try {
+            const res = await fetch(url, { cache: 'no-store' });
+            if (!res.ok) continue;
+            code = await res.text();
+            if (code.includes('getGoogleMap') && !code.includes('Обʼєкт Cesium не знайдено')) break;
+            code = '';
+        } catch (_) { /* try next */ }
+    }
+
+    if (!code) {
+        alert('Не вдалося завантажити свіжий falcon-route.js');
         return;
     }
+
     const s = document.createElement('script');
-    s.textContent = code;
+    s.textContent = code + '\n//# sourceURL=falcon-route.js';
     document.documentElement.appendChild(s);
-    console.log('🦅 FalconRoute loader: injected fresh build');
+    console.log('🦅 FalconRoute loader: OK (fresh)');
 })();
