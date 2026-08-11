@@ -464,7 +464,9 @@
             return p;
         });
         if (timestampsRepaired) localStorage.setItem(STORAGE_KEY, JSON.stringify(poiStore));
-        let corridor = JSON.parse(localStorage.getItem(CORRIDOR_KEY) || '[]') || [];
+        // Коридор лише на цей запуск скрипта — не відновлюємо з минулого разу
+        try { localStorage.removeItem(CORRIDOR_KEY); } catch (_) { /* ignore */ }
+        let corridor = [];
         let overlayObjects = [];
         let labelOverlays = [];
         let corridorOverlays = [];
@@ -613,7 +615,7 @@
                         <button class="fr-btn fr-btn-pick" id="fr-corridor">📐 Коридор</button>
                         <button class="fr-btn fr-btn-danger" id="fr-corridor-clear">Скинути коридор</button>
                     </div>
-                    <span class="fr-label" id="fr-corridor-status">Коридор не задано (показуються всі точки)</span>
+                    <span class="fr-label" id="fr-corridor-status">Коридор не задано (лише на цей запуск)</span>
                 </div>
 
                 <div class="fr-section">
@@ -1113,7 +1115,7 @@
             const path = isCorridorMode ? draftCorridor : corridor;
             const status = document.getElementById('fr-corridor-status');
             if (!path.length) {
-                status.textContent = 'Коридор не задано (показуються всі точки)';
+                status.textContent = 'Коридор не задано (лише на цей запуск)';
                 return;
             }
             status.textContent = isCorridorMode
