@@ -1295,7 +1295,7 @@
 
         function saveCorridor(data) {
             corridor = data;
-            localStorage.setItem(CORRIDOR_KEY, JSON.stringify(corridor));
+            // Не зберігаємо в localStorage — коридор лише на цей запуск скрипта
             refreshUI();
         }
 
