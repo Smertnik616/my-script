@@ -1,8 +1,8 @@
 // Короткий лоадер FALCONROUTE v2 — встав УСЕ в консоль
 (async () => {
     const urls = [
-        'https://raw.githubusercontent.com/Smertnik616/my-script/6b6e9a9/falcon-route.js?t=' + Date.now(),
-        'https://cdn.jsdelivr.net/gh/Smertnik616/my-script@6b6e9a9/falcon-route.js?t=' + Date.now()
+        'https://raw.githubusercontent.com/Smertnik616/my-script/a3f0059/falcon-route.js?t=' + Date.now(),
+        'https://cdn.jsdelivr.net/gh/Smertnik616/my-script@a3f0059/falcon-route.js?t=' + Date.now()
     ];
     document.getElementById('falcon-route-ui')?.remove();
     let code = '';
