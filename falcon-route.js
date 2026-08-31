@@ -3,11 +3,28 @@
 
     // ========== Конфіг Firebase ==========
     const DB_URL = 'https://script-poi-default-rtdb.europe-west1.firebasedatabase.app/rooms/falcon-route-default/points.json';
+    const FLIGHTS_URL = 'https://script-poi-default-rtdb.europe-west1.firebasedatabase.app/rooms/falcon-route-default/flights.json';
     const FIREBASE_ENABLED = !DB_URL.includes('ВАШ_ПРОЄКТ');
     const STORAGE_KEY = 'cesium_falcon_route_points_v1';
     const SETTINGS_KEY = 'cesium_falcon_route_settings_v1';
     const CORRIDOR_KEY = 'cesium_falcon_route_corridor_v1';
+    const CLIENT_KEY = 'falcon_route_client_id_v1';
     const MAX_BOOT_ATTEMPTS = 40;
+
+    function getClientId() {
+        try {
+            let id = localStorage.getItem(CLIENT_KEY);
+            if (!id) {
+                id = 'c_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
+                localStorage.setItem(CLIENT_KEY, id);
+            }
+            return id;
+        } catch (_) {
+            return 'c_' + Math.random().toString(36).slice(2, 11);
+        }
+    }
+
+    const CLIENT_ID = getClientId();
 
     // Збиття — з кольорами (раніше «засіб»)
     const DEFAULT_ZBYTTYA = [
@@ -32,7 +49,9 @@
         defaultAlt: 100,
         defaultRadius: 300,
         corridorWidth: 2000,
-        rulerSpeedKmh: 5
+        rulerSpeedKmh: 5,
+        callsign: 'Falcon',
+        flightColor: '#22d3ee'
     };
 
     function formatDistanceKm(meters) {
@@ -332,6 +351,56 @@
         return 2 * R * Math.asin(Math.sqrt(a));
     }
 
+    function bearingDeg(a, b) {
+        const φ1 = toRad(a.lat);
+        const φ2 = toRad(b.lat);
+        const Δλ = toRad(b.lon - a.lon);
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    function positionAlongPath(path, speedKmh, startedAt, now = Date.now()) {
+        if (!path || path.length < 2) return null;
+        const speed = Number(speedKmh);
+        if (!Number.isFinite(speed) || speed <= 0) return null;
+        const metersPerMs = (speed * 1000) / 3600 / 1000;
+        let traveled = Math.max(0, (now - startedAt) * metersPerMs);
+        let remaining = traveled;
+        let total = 0;
+        for (let i = 0; i < path.length - 1; i++) {
+            total += haversineM(path[i].lat, path[i].lon, path[i + 1].lat, path[i + 1].lon);
+        }
+        for (let i = 0; i < path.length - 1; i++) {
+            const a = path[i];
+            const b = path[i + 1];
+            const seg = haversineM(a.lat, a.lon, b.lat, b.lon);
+            if (seg <= 0) continue;
+            if (remaining <= seg) {
+                const t = remaining / seg;
+                return {
+                    lat: a.lat + (b.lat - a.lat) * t,
+                    lon: a.lon + (b.lon - a.lon) * t,
+                    heading: bearingDeg(a, b),
+                    done: false,
+                    traveledM: traveled,
+                    totalM: total
+                };
+            }
+            remaining -= seg;
+        }
+        const last = path[path.length - 1];
+        const prev = path[path.length - 2] || last;
+        return {
+            lat: last.lat,
+            lon: last.lon,
+            heading: bearingDeg(prev, last),
+            done: true,
+            traveledM: total,
+            totalM: total
+        };
+    }
+
     function distToSegmentM(lat, lon, aLat, aLon, bLat, bLon) {
         const toXY = (la, lo) => {
             const x = toRad(lo - aLon) * Math.cos(toRad((la + aLat) / 2)) * 6371000;
@@ -500,6 +569,11 @@
         let isCorridorMode = false;
         let isRulerMode = false;
         let showRuler = true;
+        let myFlight = null;
+        let remoteFlights = {};
+        let flightMarkers = {}; // id -> { marker, labelOv, entity }
+        let flightRaf = 0;
+        let flightPushTimer = 0;
         let applyRemote = false;
         let pickListener = null;
         let corridorListener = null;
@@ -663,6 +737,19 @@
                     </div>
                     <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ruler-clear">Скинути лінійку</button>
                     <div class="fr-ruler-total" id="fr-ruler-status">Лінійка не задана (лише на цей запуск)</div>
+                    <div class="fr-row" style="margin-top:6px">
+                        <label>Позивний:</label>
+                        <input type="text" id="fr-callsign" value="${settings.callsign || 'Falcon'}" maxlength="16" placeholder="Falcon">
+                    </div>
+                    <div class="fr-row">
+                        <label>Колір борта:</label>
+                        <input type="color" id="fr-flight-color" value="${settings.flightColor || '#22d3ee'}">
+                    </div>
+                    <div class="fr-grid">
+                        <button class="fr-btn fr-btn-ok" id="fr-flight-start">✈ Старт політ</button>
+                        <button class="fr-btn fr-btn-danger" id="fr-flight-stop">⏹ Стоп</button>
+                    </div>
+                    <div class="fr-label" id="fr-flight-status">Політ: вимкнено (синхрон з іншими через Firebase)</div>
                 </div>
 
                 <div class="fr-section">
@@ -762,6 +849,8 @@
             settings.defaultRadius = parseFloat(document.getElementById('fr-default-rad').value) || 300;
             settings.corridorWidth = parseFloat(document.getElementById('fr-corridor-w').value) || 2000;
             settings.rulerSpeedKmh = parseFloat(document.getElementById('fr-ruler-speed').value) || 5;
+            settings.callsign = (document.getElementById('fr-callsign')?.value || 'Falcon').trim().slice(0, 16) || 'Falcon';
+            settings.flightColor = document.getElementById('fr-flight-color')?.value || '#22d3ee';
             settings.showPoints = document.getElementById('fr-show-points').checked;
             settings.coordFormat = document.getElementById('fr-coord-format').value;
             settings.timeFilter = document.getElementById('fr-time-filter').value;
@@ -1939,6 +2028,7 @@
 
         document.getElementById('fr-ruler-clear').onclick = () => {
             if (isRulerMode) stopRulerMode();
+            if (myFlight) stopFlight(false);
             rulerPoints = [];
             renderRuler();
         };
@@ -1960,6 +2050,346 @@
         });
         document.getElementById('fr-ruler-speed').addEventListener('input', () => {
             renderRuler();
+        });
+
+        function myFlightUrl() {
+            return FLIGHTS_URL.replace(/flights\.json$/, 'flights/' + CLIENT_ID + '.json');
+        }
+
+        function clearFlightMarker(id) {
+            const slot = flightMarkers[id];
+            if (!slot) return;
+            try {
+                if (mapType === 'google') {
+                    slot.marker?.setMap(null);
+                    slot.labelOv?.setMap(null);
+                } else {
+                    if (slot.entity) map.entities.remove(slot.entity);
+                    if (slot.labelEnt) map.entities.remove(slot.labelEnt);
+                }
+            } catch (_) { /* ignore */ }
+            delete flightMarkers[id];
+        }
+
+        function clearAllFlightMarkers() {
+            Object.keys(flightMarkers).forEach(clearFlightMarker);
+        }
+
+        function createFlightCallsignOverlay(position, text, color) {
+            class FrFlightLabel extends google.maps.OverlayView {
+                constructor() {
+                    super();
+                    this.position = position;
+                    this.div = null;
+                    this.text = text;
+                    this.color = color;
+                }
+                onAdd() {
+                    this.div = document.createElement('div');
+                    this.div.className = 'fr-ruler-label';
+                    const chip = document.createElement('div');
+                    chip.className = 'fr-ruler-chip';
+                    chip.style.borderColor = this.color || '#22d3ee';
+                    chip.textContent = this.text;
+                    this.div.appendChild(chip);
+                    this.getPanes().floatPane.appendChild(this.div);
+                }
+                draw() {
+                    const proj = this.getProjection();
+                    if (!proj || !this.div) return;
+                    const p = proj.fromLatLngToDivPixel(this.position);
+                    if (!p) return;
+                    this.div.style.left = p.x + 'px';
+                    this.div.style.top = (p.y - 22) + 'px';
+                }
+                onRemove() {
+                    if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
+                    this.div = null;
+                }
+                setPos(latLng) {
+                    this.position = latLng;
+                    this.draw();
+                }
+            }
+            const ov = new FrFlightLabel();
+            ov.setMap(map);
+            return ov;
+        }
+
+        function upsertFlightMarker(id, flight, pos) {
+            if (!pos) return;
+            const color = flight.color || '#22d3ee';
+            const callsign = flight.callsign || id.slice(0, 8);
+            const isMe = id === CLIENT_ID;
+
+            if (mapType === 'google') {
+                let slot = flightMarkers[id];
+                if (!slot) {
+                    const marker = new google.maps.Marker({
+                        position: { lat: pos.lat, lng: pos.lon },
+                        map,
+                        icon: {
+                            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                            scale: isMe ? 7 : 6,
+                            fillColor: color,
+                            fillOpacity: 1,
+                            strokeColor: '#fff',
+                            strokeWeight: 1.5,
+                            rotation: pos.heading || 0
+                        },
+                        zIndex: 200,
+                        title: callsign
+                    });
+                    const labelOv = createFlightCallsignOverlay(
+                        new google.maps.LatLng(pos.lat, pos.lon),
+                        (isMe ? '● ' : '') + callsign,
+                        color
+                    );
+                    flightMarkers[id] = { marker, labelOv };
+                    slot = flightMarkers[id];
+                } else {
+                    slot.marker.setPosition({ lat: pos.lat, lng: pos.lon });
+                    slot.marker.setIcon({
+                        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                        scale: isMe ? 7 : 6,
+                        fillColor: color,
+                        fillOpacity: 1,
+                        strokeColor: '#fff',
+                        strokeWeight: 1.5,
+                        rotation: pos.heading || 0
+                    });
+                    slot.labelOv?.setPos(new google.maps.LatLng(pos.lat, pos.lon));
+                }
+                return;
+            }
+
+            if (!Cartesian3) return;
+            let slot = flightMarkers[id];
+            const rgba = hexToRgbA(color, 1);
+            if (!slot) {
+                const entity = map.entities.add({
+                    position: Cartesian3.fromDegrees(pos.lon, pos.lat),
+                    point: {
+                        pixelSize: isMe ? 16 : 14,
+                        color: rgba,
+                        outlineColor: { red: 1, green: 1, blue: 1, alpha: 1 },
+                        outlineWidth: 2
+                    }
+                });
+                const labelEnt = map.entities.add({
+                    position: Cartesian3.fromDegrees(pos.lon, pos.lat),
+                    label: {
+                        text: (isMe ? '● ' : '') + callsign,
+                        font: 'bold 11px sans-serif',
+                        fillColor: { red: 1, green: 1, blue: 1, alpha: 1 },
+                        outlineColor: { red: 0, green: 0, blue: 0, alpha: 1 },
+                        outlineWidth: 3,
+                        pixelOffset: window.Cesium?.Cartesian2
+                            ? new window.Cesium.Cartesian2(0, -18)
+                            : undefined,
+                        showBackground: true,
+                        backgroundColor: { red: 0.03, green: 0.18, blue: 0.28, alpha: 0.85 },
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                });
+                flightMarkers[id] = { entity, labelEnt };
+            } else {
+                slot.entity.position = Cartesian3.fromDegrees(pos.lon, pos.lat);
+                slot.labelEnt.position = Cartesian3.fromDegrees(pos.lon, pos.lat);
+            }
+            map.scene?.requestRender?.();
+        }
+
+        function setFlightStatus(text) {
+            const el = document.getElementById('fr-flight-status');
+            if (el) el.textContent = text;
+        }
+
+        async function pushMyFlight() {
+            if (!FIREBASE_ENABLED || !myFlight) return;
+            myFlight.updatedAt = Date.now();
+            try {
+                await fetch(myFlightUrl(), {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(myFlight)
+                });
+            } catch (err) {
+                console.warn('[FALCONROUTE] flight PUT failed:', err);
+            }
+        }
+
+        async function clearMyFlightRemote() {
+            if (!FIREBASE_ENABLED) return;
+            try {
+                await fetch(myFlightUrl(), { method: 'DELETE' });
+            } catch (err) {
+                console.warn('[FALCONROUTE] flight DELETE failed:', err);
+            }
+        }
+
+        function stopFlightLoop() {
+            if (flightRaf) {
+                cancelAnimationFrame(flightRaf);
+                flightRaf = 0;
+            }
+            if (flightPushTimer) {
+                clearInterval(flightPushTimer);
+                flightPushTimer = 0;
+            }
+        }
+
+        function tickFlights() {
+            const now = Date.now();
+            const activeIds = new Set();
+
+            if (myFlight?.active) {
+                const pos = positionAlongPath(myFlight.path, myFlight.speedKmh, myFlight.startedAt, now);
+                if (!pos) {
+                    stopFlight(false);
+                } else {
+                    upsertFlightMarker(CLIENT_ID, myFlight, pos);
+                    activeIds.add(CLIENT_ID);
+                    const left = Math.max(0, (pos.totalM || 0) - (pos.traveledM || 0));
+                    setFlightStatus(
+                        pos.done
+                            ? `Політ завершено · ${myFlight.callsign}`
+                            : `В польоті: ${myFlight.callsign} · ${formatDistanceKm(pos.traveledM || 0)} / ${formatDistanceKm(pos.totalM || 0)} · лишилось ${formatTravelTime(left, myFlight.speedKmh)}`
+                    );
+                    if (pos.done) stopFlight(true);
+                }
+            }
+
+            Object.keys(remoteFlights).forEach(id => {
+                if (id === CLIENT_ID) return;
+                const f = remoteFlights[id];
+                if (!f?.active || !f.path || f.path.length < 2) return;
+                if (now - (f.updatedAt || f.startedAt || 0) > 120000) return;
+                const pos = positionAlongPath(f.path, f.speedKmh, f.startedAt, now);
+                if (!pos || pos.done) return;
+                upsertFlightMarker(id, f, pos);
+                activeIds.add(id);
+            });
+
+            Object.keys(flightMarkers).forEach(id => {
+                if (!activeIds.has(id)) clearFlightMarker(id);
+            });
+
+            flightRaf = requestAnimationFrame(tickFlights);
+        }
+
+        function startFlightLoop() {
+            if (flightRaf) return;
+            flightRaf = requestAnimationFrame(tickFlights);
+        }
+
+        function stopFlight(completed) {
+            const was = myFlight;
+            myFlight = null;
+            stopFlightLoop();
+            // keep loop if remotes still flying
+            if (Object.keys(remoteFlights).some(id => id !== CLIENT_ID && remoteFlights[id]?.active)) {
+                startFlightLoop();
+            }
+            clearFlightMarker(CLIENT_ID);
+            clearMyFlightRemote();
+            const btn = document.getElementById('fr-flight-start');
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = '✈ Старт політ';
+            }
+            setFlightStatus(completed
+                ? `Політ завершено${was ? ' · ' + was.callsign : ''}`
+                : 'Політ: вимкнено (синхрон з іншими через Firebase)');
+        }
+
+        function startFlight() {
+            if (rulerPoints.length < 2) {
+                alert('Спочатку намалюй лінійку мінімум з 2 точок.');
+                return;
+            }
+            saveSettings();
+            if (isRulerMode) stopRulerMode();
+
+            const path = rulerPoints.map(p => ({ lat: p.lat, lon: p.lon }));
+            const speed = getRulerSpeed();
+            const callsign = (document.getElementById('fr-callsign').value || 'Falcon').trim().slice(0, 16) || 'Falcon';
+            const color = document.getElementById('fr-flight-color').value || '#22d3ee';
+
+            myFlight = {
+                id: CLIENT_ID,
+                callsign,
+                color,
+                path,
+                speedKmh: speed,
+                startedAt: Date.now(),
+                updatedAt: Date.now(),
+                active: true
+            };
+
+            showRuler = true;
+            updateRulerToggleUi();
+            document.getElementById('fr-flight-start').textContent = '✈ В польоті…';
+            document.getElementById('fr-flight-start').disabled = true;
+            setFlightStatus(`Старт: ${callsign} · ${speed} км/год`);
+
+            pushMyFlight();
+            if (flightPushTimer) clearInterval(flightPushTimer);
+            flightPushTimer = setInterval(pushMyFlight, 4000);
+            startFlightLoop();
+        }
+
+        function listenToFlights() {
+            if (!FIREBASE_ENABLED) return;
+            try {
+                const es = new EventSource(FLIGHTS_URL);
+                es.addEventListener('put', (e) => {
+                    try {
+                        const res = JSON.parse(e.data);
+                        if (res.path === '/') {
+                            remoteFlights = (res.data && typeof res.data === 'object') ? res.data : {};
+                        } else {
+                            const key = String(res.path || '').replace(/^\//, '');
+                            if (!key) return;
+                            if (res.data === null) delete remoteFlights[key];
+                            else remoteFlights[key] = res.data;
+                        }
+                        // не затирати свій активний політ з remote
+                        if (myFlight) remoteFlights[CLIENT_ID] = myFlight;
+                        startFlightLoop();
+                    } catch (err) {
+                        console.warn('[FALCONROUTE] flights sync parse error', err);
+                    }
+                });
+                es.addEventListener('patch', (e) => {
+                    try {
+                        const res = JSON.parse(e.data);
+                        if (res.path === '/' && res.data && typeof res.data === 'object') {
+                            remoteFlights = { ...remoteFlights, ...res.data };
+                            if (myFlight) remoteFlights[CLIENT_ID] = myFlight;
+                            startFlightLoop();
+                        }
+                    } catch (_) { /* ignore */ }
+                });
+                es.onerror = () => {
+                    /* auto-reconnect by EventSource */
+                };
+            } catch (err) {
+                console.warn('[FALCONROUTE] flights EventSource failed', err);
+            }
+        }
+
+        document.getElementById('fr-flight-start').onclick = () => startFlight();
+        document.getElementById('fr-flight-stop').onclick = () => stopFlight(false);
+        document.getElementById('fr-callsign').addEventListener('change', () => saveSettings());
+        document.getElementById('fr-flight-color').addEventListener('change', () => saveSettings());
+
+        window.addEventListener('beforeunload', () => {
+            if (!myFlight) return;
+            myFlight = null;
+            try {
+                fetch(myFlightUrl(), { method: 'DELETE', keepalive: true });
+            } catch (_) { /* ignore */ }
         });
 
         document.getElementById('fr-export').onclick = () => {
@@ -2068,8 +2498,9 @@
 
         refreshUI();
         listenToCloudUpdates();
+        listenToFlights();
         if (timestampsRepaired) pushToFirebase(poiStore);
-        console.log(`🦅 FALCONROUTE v2 завантажено! (${mapType === 'google' ? 'Google Maps / R2D2' : 'Cesium'}) — коридор/лінійка/фільтри`);
+        console.log(`🦅 FALCONROUTE v2 завантажено! (${mapType === 'google' ? 'Google Maps / R2D2' : 'Cesium'}) — лінійка/політ/синхрон`);
     }
 
     document.getElementById('falcon-route-ui')?.remove();
