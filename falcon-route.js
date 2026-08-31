@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'cruise-8';
+    const FR_BUILD = 'range-9';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -654,6 +654,9 @@
         let isDraggingPlane = false;
         let headingDragTip = null;
         let planeDragPos = null;
+        let rangeTargetId = '';
+        let rangeLineOverlays = [];
+        let rangeTrack = null;
         let placeAircraftListener = null;
         let flyToListener = null;
         let cesiumHeadingHandler = null;
@@ -858,7 +861,14 @@
                     </div>
                     <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-flight-stop">⏹ Прибрати борт</button>
                     <div class="fr-label" id="fr-flight-status">Борт не виставлено</div>
-                    <div class="fr-ruler-total" id="fr-flight-distances">Немає інших бортів онлайн</div>
+                    <div class="fr-row">
+                        <label>Дистанція до:</label>
+                        <select id="fr-range-target">
+                            <option value="">— не вимірювати —</option>
+                        </select>
+                    </div>
+                    <div class="fr-ruler-total" id="fr-flight-range">Обери борт, щоб міряти відстань</div>
+                    <div class="fr-label" id="fr-flight-distances" style="white-space:pre-line;opacity:.8">Немає інших бортів онлайн</div>
                 </div>
 
                 <div class="fr-section">
@@ -2895,30 +2905,164 @@
             return null;
         }
 
-        function updateDistancesPanel(myPos) {
-            const box = document.getElementById('fr-flight-distances');
-            if (!box) return;
+        function clearRangeLine() {
+            try {
+                if (mapType === 'google') {
+                    rangeLineOverlays.forEach(o => {
+                        try { o.setMap(null); } catch (_) { /* ignore */ }
+                    });
+                } else {
+                    rangeLineOverlays.forEach(ent => {
+                        try { map.entities.remove(ent); } catch (_) { /* ignore */ }
+                    });
+                }
+            } catch (_) { /* ignore */ }
+            rangeLineOverlays = [];
+            rangeTrack = null;
+        }
+
+        function listOnlinePeers(myPos) {
             const speed = getRulerSpeed();
+            const now = Date.now();
             const rows = [];
             Object.keys(remoteFlights).forEach(id => {
                 if (id === CLIENT_ID) return;
                 const f = remoteFlights[id];
                 if (!f?.active) return;
-                if (Date.now() - (f.updatedAt || f.startedAt || 0) > 120000) return;
-                const pos = resolveFlightPos(f);
-                if (!pos || !myPos) return;
-                const dist = haversineM(myPos.lat, myPos.lon, pos.lat, pos.lon);
+                if (now - (f.updatedAt || f.startedAt || 0) > 120000) return;
+                const pos = resolveFlightPos(f, now);
+                if (!pos) return;
+                const dist = myPos
+                    ? haversineM(myPos.lat, myPos.lon, pos.lat, pos.lon)
+                    : null;
                 rows.push({
+                    id,
                     name: f.callsign || id.slice(0, 8),
+                    color: f.color || '#94a3b8',
+                    pos: { lat: pos.lat, lon: pos.lon },
                     dist,
-                    text: `${f.callsign || id.slice(0, 8)}: ${formatDistanceKm(dist)} · ${formatTravelTime(dist, speed)}`
+                    eta: dist != null ? formatTravelTime(dist, speed) : '—',
+                    text: dist != null
+                        ? `${f.callsign || id.slice(0, 8)}: ${formatDistanceKm(dist)} · ${formatTravelTime(dist, speed)}`
+                        : (f.callsign || id.slice(0, 8))
                 });
             });
-            rows.sort((a, b) => a.dist - b.dist);
-            box.textContent = rows.length
-                ? rows.map(r => r.text).join('\n')
-                : 'Немає інших бортів онлайн';
-            box.style.whiteSpace = 'pre-line';
+            rows.sort((a, b) => (a.dist ?? 1e18) - (b.dist ?? 1e18));
+            return rows;
+        }
+
+        function syncRangeTargetSelect(peers) {
+            const sel = document.getElementById('fr-range-target');
+            if (!sel) return;
+            const idsKey = peers.map(p => p.id).join('|');
+            if (sel.dataset.frIds !== idsKey) {
+                const keep = rangeTargetId || sel.value || '';
+                sel.innerHTML = ['<option value="">— не вимірювати —</option>']
+                    .concat(peers.map(p => `<option value="${p.id}">${p.name}</option>`))
+                    .join('');
+                sel.dataset.frIds = idsKey;
+                sel.value = peers.some(p => p.id === keep) ? keep : '';
+                rangeTargetId = sel.value || '';
+            } else if (rangeTargetId && !peers.some(p => p.id === rangeTargetId)) {
+                rangeTargetId = '';
+                sel.value = '';
+            } else if (sel.value !== rangeTargetId) {
+                sel.value = rangeTargetId || '';
+            }
+        }
+
+        function updateRangeLine(myPos, targetPos) {
+            if (!myPos || !targetPos) {
+                clearRangeLine();
+                return;
+            }
+            if (mapType === 'google') {
+                const path = [
+                    { lat: myPos.lat, lng: myPos.lon },
+                    { lat: targetPos.lat, lng: targetPos.lon }
+                ];
+                if (!rangeLineOverlays.length) {
+                    rangeLineOverlays.push(new google.maps.Polyline({
+                        path,
+                        geodesic: true,
+                        strokeColor: '#a78bfa',
+                        strokeOpacity: 0.85,
+                        strokeWeight: 2,
+                        map,
+                        zIndex: 190,
+                        clickable: false,
+                        icons: [{
+                            icon: {
+                                path: 'M 0,-1 0,1',
+                                strokeOpacity: 0.85,
+                                scale: 2
+                            },
+                            offset: '0',
+                            repeat: '12px'
+                        }]
+                    }));
+                } else {
+                    rangeLineOverlays[0].setPath(path);
+                }
+                return;
+            }
+            if (!Cartesian3) return;
+            const Cesium = window.Cesium;
+            if (!rangeTrack) {
+                rangeTrack = {
+                    a: Cartesian3.fromDegrees(myPos.lon, myPos.lat),
+                    b: Cartesian3.fromDegrees(targetPos.lon, targetPos.lat)
+                };
+                rangeLineOverlays.push(map.entities.add({
+                    polyline: {
+                        positions: Cesium?.CallbackProperty
+                            ? new Cesium.CallbackProperty(() => [rangeTrack.a, rangeTrack.b], false)
+                            : [rangeTrack.a, rangeTrack.b],
+                        width: 2,
+                        material: toCesiumColor({ red: 0.65, green: 0.55, blue: 0.98, alpha: 0.85 })
+                    }
+                }));
+            } else {
+                rangeTrack.a = Cartesian3.fromDegrees(myPos.lon, myPos.lat);
+                rangeTrack.b = Cartesian3.fromDegrees(targetPos.lon, targetPos.lat);
+            }
+            map.scene?.requestRender?.();
+        }
+
+        function updateDistancesPanel(myPos) {
+            const box = document.getElementById('fr-flight-distances');
+            const rangeEl = document.getElementById('fr-flight-range');
+            const peers = listOnlinePeers(myPos);
+            syncRangeTargetSelect(peers);
+
+            if (box) {
+                box.textContent = peers.length
+                    ? peers.map(r => r.text).join('\n')
+                    : 'Немає інших бортів онлайн';
+                box.style.whiteSpace = 'pre-line';
+            }
+
+            const target = peers.find(p => p.id === rangeTargetId);
+            if (!myPos) {
+                if (rangeEl) rangeEl.textContent = 'Спочатку постав свій борт';
+                clearRangeLine();
+                return;
+            }
+            if (!target) {
+                if (rangeEl) {
+                    rangeEl.textContent = peers.length
+                        ? 'Обери борт у списку «Дистанція до»'
+                        : 'Немає інших бортів для вимірювання';
+                }
+                clearRangeLine();
+                return;
+            }
+            if (rangeEl) {
+                rangeEl.innerHTML =
+                    `<b>${target.name}</b>: ${formatDistanceKm(target.dist)} · ETA ${target.eta}` +
+                    ` · ${getRulerSpeed()} км/год`;
+            }
+            updateRangeLine(myPos, target.pos);
         }
 
         function tickFlights() {
@@ -3115,6 +3259,7 @@
             }
             setFlightStatus('Борт не виставлено');
             updateCruiseBtn();
+            clearRangeLine();
             updateDistancesPanel(null);
         }
 
@@ -3207,6 +3352,9 @@
         document.getElementById('fr-flight-place').onclick = () => beginPlaceAircraft();
         document.getElementById('fr-flight-goto').onclick = () => toggleCruise();
         document.getElementById('fr-flight-stop').onclick = () => removeMyAircraft();
+        document.getElementById('fr-range-target').addEventListener('change', (e) => {
+            rangeTargetId = e.target.value || '';
+        });
         document.getElementById('fr-callsign').addEventListener('change', () => {
             saveSettings();
             if (myFlight) {
