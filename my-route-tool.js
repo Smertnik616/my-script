@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'attach-track-16';
+    const FR_BUILD = 'ui-polish-17';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -929,73 +929,207 @@
         const panel = document.createElement('div');
         panel.id = 'falcon-route-ui';
         panel.style.cssText = `
-            position: fixed; top: 30px; right: 30px; width: 360px;
-            height: min(92vh, calc(100vh - 40px)); max-height: calc(100vh - 40px);
-            background: #181920; color: #e0e0e0; border: 1px solid #383a48;
-            border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.7);
-            font-family: system-ui, -apple-system, sans-serif; font-size: 12px;
+            position: fixed; top: 24px; right: 24px; width: 380px;
+            height: min(92vh, calc(100vh - 36px)); max-height: calc(100vh - 36px);
+            background: #12141c; color: #e8eaef; border: 1px solid #2c3140;
+            border-radius: 14px; box-shadow: 0 18px 48px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.03) inset;
+            font-family: "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 12px;
             z-index: 9999999; user-select: none; display: flex; flex-direction: column;
             overflow: hidden;
         `;
 
         const htmlLayout = `
             <style>
-                #falcon-route-ui .fr-head { background: #222430; padding: 10px 12px; font-weight: bold; color: #4da6ff; display: flex; justify-content: space-between; align-items: center; cursor: move; border-top-left-radius: 8px; border-top-right-radius: 8px; flex-shrink: 0; }
-                #falcon-route-ui .fr-body { padding: 10px; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+                #falcon-route-ui * { box-sizing: border-box; }
+                #falcon-route-ui .fr-head {
+                    background: linear-gradient(180deg, #1c2230 0%, #171b26 100%);
+                    padding: 12px 14px; color: #7dd3fc;
+                    display: flex; justify-content: space-between; align-items: center;
+                    cursor: move; flex-shrink: 0; border-bottom: 1px solid #2a3142;
+                }
+                #falcon-route-ui .fr-head-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+                #falcon-route-ui .fr-head-name { font-weight: 750; font-size: 13px; letter-spacing: .02em; color: #e0f2fe; }
+                #falcon-route-ui .fr-head-meta { font-size: 10px; color: #94a3b8; font-weight: 500; }
+                #falcon-route-ui .fr-head-actions { display: flex; align-items: center; gap: 6px; }
+                #falcon-route-ui .fr-icon-btn {
+                    width: 28px; height: 28px; border-radius: 8px; border: 1px solid #334155;
+                    background: #0f172a; color: #cbd5e1; cursor: pointer; font-size: 14px; line-height: 1;
+                    display: inline-flex; align-items: center; justify-content: center;
+                }
+                #falcon-route-ui .fr-icon-btn:hover { background: #1e293b; color: #fff; border-color: #475569; }
+                #falcon-route-ui .fr-body {
+                    padding: 10px 10px 12px; flex: 1 1 auto; min-height: 0;
+                    overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+                    -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 8px;
+                }
                 #falcon-route-ui .fr-body.hidden { display: none; }
                 #falcon-route-ui.fr-collapsed { height: auto !important; max-height: none; }
-                #falcon-route-ui .fr-body > * { width: 100%; box-sizing: border-box; margin: 0 0 8px 0; flex: none !important; flex-shrink: 0 !important; }
+                #falcon-route-ui .fr-body > * { width: 100%; margin: 0; flex: none !important; flex-shrink: 0 !important; }
                 #falcon-route-ui .fr-body > *:not(.fr-list) { max-height: none !important; }
-                #falcon-route-ui .fr-body > *:last-child { margin-bottom: 0; }
+
                 #falcon-route-ui input:not([type="checkbox"]):not([type="color"]),
                 #falcon-route-ui select, #falcon-route-ui textarea, #falcon-route-ui button {
                     -webkit-appearance: none !important; appearance: none !important;
                     box-sizing: border-box !important; max-height: none !important; flex-shrink: 0 !important;
-                    font-size: 12px !important; line-height: 1.35 !important;
+                    font-size: 12px !important; line-height: 1.35 !important; font-family: inherit !important;
                 }
-                #falcon-route-ui textarea { width: 100% !important; height: 96px !important; min-height: 96px !important; background: #0f1015; color: #00ffcc; border: 1px solid #333; border-radius: 4px; padding: 8px !important; font-family: monospace; resize: vertical; }
+                #falcon-route-ui textarea {
+                    width: 100% !important; height: 84px !important; min-height: 84px !important;
+                    background: #0b0e14; color: #67e8f9; border: 1px solid #2a3142; border-radius: 8px;
+                    padding: 8px 10px !important; font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+                    resize: vertical;
+                }
+                #falcon-route-ui textarea:focus,
+                #falcon-route-ui input:not([type="checkbox"]):not([type="color"]):focus,
+                #falcon-route-ui select:focus {
+                    outline: none; border-color: #38bdf8 !important; box-shadow: 0 0 0 2px rgba(56,189,248,.18);
+                }
                 #falcon-route-ui .fr-row { display: flex !important; justify-content: space-between; align-items: center; gap: 8px; min-height: 32px; }
-                #falcon-route-ui .fr-row > label { flex: 0 0 auto; }
-                #falcon-route-ui input:not([type="checkbox"]):not([type="color"]) { background: #0f1015; color: #fff; border: 1px solid #333; border-radius: 4px; padding: 6px 8px !important; min-height: 32px !important; height: 32px !important; }
-                #falcon-route-ui select { background: #0f1015; color: #fff; border: 1px solid #333; border-radius: 4px; padding: 6px 8px !important; min-height: 32px !important; height: 32px !important; cursor: pointer; pointer-events: auto !important; }
-                #falcon-route-ui input[type="number"] { width: 78px; text-align: center; }
+                #falcon-route-ui .fr-row > label { flex: 0 0 auto; color: #94a3b8; font-size: 11px; }
+                #falcon-route-ui input:not([type="checkbox"]):not([type="color"]) {
+                    background: #0b0e14; color: #fff; border: 1px solid #2a3142; border-radius: 8px;
+                    padding: 6px 8px !important; min-height: 32px !important; height: 32px !important;
+                }
+                #falcon-route-ui select {
+                    background: #0b0e14; color: #fff; border: 1px solid #2a3142; border-radius: 8px;
+                    padding: 6px 28px 6px 8px !important; min-height: 32px !important; height: 32px !important;
+                    cursor: pointer; pointer-events: auto !important;
+                    background-image: linear-gradient(45deg, transparent 50%, #94a3b8 50%), linear-gradient(135deg, #94a3b8 50%, transparent 50%);
+                    background-position: calc(100% - 14px) 13px, calc(100% - 9px) 13px;
+                    background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+                }
+                #falcon-route-ui input[type="number"] { width: 84px; text-align: center; }
                 #falcon-route-ui input[type="text"] { flex: 1 1 auto; min-width: 0; width: auto; }
-                #falcon-route-ui input[type="color"] { width: 36px !important; height: 32px !important; min-height: 32px !important; padding: 0 !important; border: none; background: none; cursor: pointer; }
+                #falcon-route-ui input[type="color"] {
+                    width: 36px !important; height: 32px !important; min-height: 32px !important;
+                    padding: 0 !important; border: 1px solid #2a3142; border-radius: 8px; background: #0b0e14; cursor: pointer;
+                }
                 #falcon-route-ui input[type="checkbox"] {
                     -webkit-appearance: auto !important; appearance: auto !important;
-                    width: 18px !important; height: 18px !important; min-width: 18px !important; min-height: 18px !important;
-                    margin: 0 8px 0 0 !important; padding: 0 !important; flex: 0 0 18px !important;
-                    accent-color: #3b82f6; cursor: pointer; pointer-events: auto !important;
+                    width: 16px !important; height: 16px !important; min-width: 16px !important; min-height: 16px !important;
+                    margin: 0 8px 0 0 !important; padding: 0 !important; flex: 0 0 16px !important;
+                    accent-color: #38bdf8; cursor: pointer; pointer-events: auto !important;
                     background: none !important; border: none !important; position: relative; z-index: 2;
                 }
-                #falcon-route-ui .fr-check { display: flex !important; align-items: center; gap: 6px; color: #d1d5db; cursor: pointer; user-select: none; pointer-events: auto !important; }
+                #falcon-route-ui .fr-check {
+                    display: flex !important; align-items: center; gap: 6px; color: #cbd5e1;
+                    cursor: pointer; user-select: none; pointer-events: auto !important; font-size: 12px;
+                }
                 #falcon-route-ui .fr-row select, #falcon-route-ui select { flex: 1 1 auto; min-width: 0; width: auto; }
                 #falcon-route-ui .fr-grid { display: grid !important; grid-template-columns: 1fr 1fr; gap: 6px; }
-                #falcon-route-ui .fr-btn { background: #2a2d3d; color: #fff; border: none; padding: 8px 10px !important; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px !important; min-height: 34px !important; height: auto !important; }
-                #falcon-route-ui .fr-btn:hover { background: #3b82f6; }
-                #falcon-route-ui .fr-btn-pick { background: #1e3a8a; color: #60a5fa; border: 1px solid #2563eb; width: 100%; }
-                #falcon-route-ui .fr-btn-pick.active { background: #d97706; color: #fff; }
-                #falcon-route-ui .fr-btn-danger { background: #451a1a; color: #f87171; }
-                #falcon-route-ui .fr-btn-danger:hover { background: #dc2626; color: #fff; }
+                #falcon-route-ui .fr-grid-3 { display: grid !important; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+
+                #falcon-route-ui .fr-btn {
+                    background: #1e2433; color: #e2e8f0; border: 1px solid #323849;
+                    padding: 8px 10px !important; border-radius: 9px; cursor: pointer;
+                    font-weight: 650; font-size: 11px !important; min-height: 34px !important; height: auto !important;
+                    transition: background .12s ease, border-color .12s ease, color .12s ease;
+                }
+                #falcon-route-ui .fr-btn:hover { background: #273044; border-color: #3b82f6; color: #fff; }
+                #falcon-route-ui .fr-btn-pick { background: #13233f; color: #7dd3fc; border: 1px solid #1d4ed8; width: 100%; }
+                #falcon-route-ui .fr-btn-pick:hover { background: #1e3a5f; }
+                #falcon-route-ui .fr-btn-pick.active { background: #b45309; color: #fff; border-color: #f59e0b; }
+                #falcon-route-ui .fr-btn-danger { background: #2a1518; color: #fca5a5; border-color: #7f1d1d; }
+                #falcon-route-ui .fr-btn-danger:hover { background: #dc2626; color: #fff; border-color: #ef4444; }
                 #falcon-route-ui .fr-btn-wide { width: 100%; }
-                #falcon-route-ui .fr-btn-ok { background: #14532d; color: #86efac; }
-                #falcon-route-ui .fr-count { color: #93c5fd; font-size: 11px; font-weight: bold; margin: 0 0 4px 0; }
-                #falcon-route-ui .fr-list { max-height: 110px !important; height: 110px !important; overflow-x: hidden; overflow-y: auto !important; background: #0f1015; border: 1px solid #252836; border-radius: 4px; padding: 4px; flex-shrink: 0 !important; }
-                #falcon-route-ui .fr-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; padding: 4px; border-bottom: 1px solid #1a1c26; font-family: monospace; font-size: 10px; }
-                #falcon-route-ui .fr-item-main { flex: 1; min-width: 0; word-break: break-all; }
+                #falcon-route-ui .fr-btn-ok { background: #10291c; color: #86efac; border-color: #166534; }
+                #falcon-route-ui .fr-btn-ok:hover { background: #166534; color: #fff; }
+                #falcon-route-ui .fr-btn-ok.active { background: #854d0e; color: #fef3c7; border-color: #eab308; }
+                #falcon-route-ui .fr-btn-primary { background: #0ea5e9; color: #082f49; border-color: #38bdf8; font-weight: 750; }
+                #falcon-route-ui .fr-btn-primary:hover { background: #38bdf8; color: #082f49; }
+
+                #falcon-route-ui .fr-quick {
+                    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+                    padding: 8px; background: #171b26; border: 1px solid #2a3142; border-radius: 12px;
+                }
+                #falcon-route-ui .fr-card {
+                    background: #171b26; border: 1px solid #2a3142; border-radius: 12px;
+                    padding: 0; overflow: hidden;
+                }
+                #falcon-route-ui .fr-card > .fr-card-body {
+                    display: flex; flex-direction: column; gap: 8px; padding: 10px;
+                }
+                #falcon-route-ui details.fr-acc { background: #171b26; border: 1px solid #2a3142; border-radius: 12px; overflow: hidden; }
+                #falcon-route-ui details.fr-acc > summary {
+                    cursor: pointer; list-style: none; user-select: none;
+                    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+                    padding: 10px 12px; background: #1a2030; color: #e2e8f0; font-weight: 700; font-size: 12px;
+                }
+                #falcon-route-ui details.fr-acc > summary::-webkit-details-marker { display: none; }
+                #falcon-route-ui details.fr-acc > summary::after {
+                    content: "▾"; color: #64748b; font-size: 11px; transition: transform .15s ease;
+                }
+                #falcon-route-ui details.fr-acc[open] > summary::after { transform: rotate(180deg); }
+                #falcon-route-ui details.fr-acc > summary:hover { background: #20283a; }
+                #falcon-route-ui details.fr-acc .fr-acc-body {
+                    display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px;
+                    border-top: 1px solid #2a3142;
+                }
+                #falcon-route-ui .fr-acc-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+                #falcon-route-ui .fr-acc-ico {
+                    width: 22px; height: 22px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center;
+                    background: #0f172a; border: 1px solid #334155; font-size: 12px; flex: 0 0 auto;
+                }
+                #falcon-route-ui .fr-hint { color: #94a3b8; font-size: 10px; line-height: 1.4; }
+                #falcon-route-ui .fr-status {
+                    background: #0b0e14; border: 1px solid #2a3142; border-radius: 8px;
+                    padding: 8px 10px; color: #bae6fd; font-size: 11px; font-weight: 650; line-height: 1.35;
+                    min-height: 34px;
+                }
+                #falcon-route-ui .fr-status.muted { color: #94a3b8; font-weight: 500; }
+                #falcon-route-ui .fr-section { border-top: none; padding-top: 0; display: flex !important; flex-direction: column; gap: 8px; }
+                #falcon-route-ui .fr-label { color: #94a3b8; font-size: 11px; }
+                #falcon-route-ui .fr-count {
+                    color: #93c5fd; font-size: 11px; font-weight: 700;
+                    display: flex; justify-content: space-between; align-items: center;
+                }
+                #falcon-route-ui .fr-list {
+                    max-height: 120px !important; height: 120px !important;
+                    overflow-x: hidden; overflow-y: auto !important;
+                    background: #0b0e14; border: 1px solid #2a3142; border-radius: 8px; padding: 4px;
+                    flex-shrink: 0 !important;
+                }
+                #falcon-route-ui .fr-item {
+                    display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;
+                    padding: 6px; border-bottom: 1px solid #1a1c26; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px;
+                }
+                #falcon-route-ui .fr-item:last-child { border-bottom: none; }
+                #falcon-route-ui .fr-item-main { flex: 1; min-width: 0; word-break: break-all; color: #cbd5e1; }
                 #falcon-route-ui .fr-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
                 #falcon-route-ui .fr-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
-                #falcon-route-ui .fr-section { border-top: 1px solid #2a2d3d; padding-top: 8px; display: flex !important; flex-direction: column; gap: 6px; }
-                #falcon-route-ui .fr-label { color: #9ca3af; font-size: 11px; }
-                #falcon-route-ui .fr-sync { font-size: 10px; color: #6b7280; min-height: 14px; }
+                #falcon-route-ui .fr-sync {
+                    font-size: 10px; color: #64748b; min-height: 14px; padding: 2px 2px 0;
+                    display: flex; align-items: center; gap: 6px;
+                }
+                #falcon-route-ui .fr-sync::before {
+                    content: ""; width: 7px; height: 7px; border-radius: 50%; background: #64748b; flex: 0 0 auto;
+                }
                 #falcon-route-ui .fr-sync.on { color: #4ade80; }
+                #falcon-route-ui .fr-sync.on::before { background: #4ade80; box-shadow: 0 0 8px rgba(74,222,128,.55); }
                 #falcon-route-ui .fr-sync.err { color: #f87171; }
+                #falcon-route-ui .fr-sync.err::before { background: #f87171; }
                 #falcon-route-ui .fr-legend { display: flex; flex-wrap: wrap; gap: 6px; }
-                #falcon-route-ui .fr-legend span { display: inline-flex; align-items: center; gap: 4px; background: #0f1015; border: 1px solid #252836; border-radius: 4px; padding: 2px 6px; font-size: 10px; }
+                #falcon-route-ui .fr-legend span {
+                    display: inline-flex; align-items: center; gap: 4px;
+                    background: #0b0e14; border: 1px solid #2a3142; border-radius: 999px;
+                    padding: 3px 8px; font-size: 10px; color: #cbd5e1;
+                }
                 #falcon-route-ui .fr-means-row { display: flex; gap: 4px; align-items: center; }
                 #falcon-route-ui .fr-means-list { display: flex; flex-direction: column; gap: 4px; max-height: 110px; overflow-y: auto; }
                 #falcon-route-ui details.fr-details > summary { cursor: pointer; color: #93c5fd; font-weight: bold; list-style: none; }
                 #falcon-route-ui details.fr-details > summary::-webkit-details-marker { display: none; }
+                #falcon-route-ui .fr-field-grid {
+                    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+                }
+                #falcon-route-ui .fr-field { display: flex; flex-direction: column; gap: 4px; }
+                #falcon-route-ui .fr-field > label { color: #94a3b8; font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
+                #falcon-route-ui .fr-field select,
+                #falcon-route-ui .fr-field input:not([type="checkbox"]):not([type="color"]) { width: 100%; }
+                #falcon-route-ui .fr-ruler-total { color: #7dd3fc; font-size: 11px; font-weight: bold; line-height: 1.35; }
+                #falcon-route-ui .fr-footer {
+                    flex-shrink: 0; border-top: 1px solid #2a3142; background: #141822;
+                    padding: 8px 12px; display: flex; flex-direction: column; gap: 4px;
+                }
                 .fr-map-label { position: absolute; transform: translate(-50%, calc(-100% - 14px)); pointer-events: none; white-space: nowrap; text-align: center; z-index: 1; }
                 .fr-map-label .fr-means-tag { background: rgba(15,16,21,.92); color: #fde68a; font: bold 10px/1.2 system-ui; padding: 2px 5px; border-radius: 3px; border: 1px solid rgba(253,230,138,.45); max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
                 .fr-ruler-label { position: absolute; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap; z-index: 2; }
@@ -1015,169 +1149,207 @@
                     background: rgba(8,47,73,.92); border: 1px solid rgba(125,211,252,.85);
                     box-shadow: 0 2px 8px rgba(0,0,0,.45); text-shadow: none;
                 }
-                #falcon-route-ui .fr-ruler-total { color: #7dd3fc; font-size: 11px; font-weight: bold; line-height: 1.35; }
             </style>
             <div class="fr-head" id="fr-drag">
-                <span>🦅 FALCONROUTE v2 <span style="opacity:.55;font-weight:600;font-size:10px">${FR_BUILD}</span></span>
-                <span id="fr-toggle" style="cursor:pointer">─</span>
+                <div class="fr-head-title">
+                    <span class="fr-head-name">🦅 FalconRoute</span>
+                    <span class="fr-head-meta">v2 · ${FR_BUILD}</span>
+                </div>
+                <div class="fr-head-actions">
+                    <button type="button" class="fr-icon-btn" id="fr-toggle" title="Згорнути / розгорнути">─</button>
+                </div>
             </div>
             <div class="fr-body" id="fr-main">
-                <button class="fr-btn fr-btn-pick" id="fr-pick">🎯 Клацнути на карті</button>
-                <button class="fr-btn fr-btn-pick" id="fr-coord-pick">📋 Координати (MGRS)</button>
-
-                <div class="fr-row">
-                    <label>Збиття:</label>
-                    <select id="fr-means"></select>
-                </div>
-                <div class="fr-row">
-                    <label>Засіб:</label>
-                    <select id="fr-zasib"></select>
-                </div>
-                <div class="fr-row">
-                    <label>Висота збиття (м):</label>
-                    <input type="number" id="fr-alt" value="${settings.defaultAlt}" step="50" min="0">
-                </div>
-                <div class="fr-row">
-                    <label>Радіус (м):</label>
-                    <input type="number" id="fr-default-rad" value="${settings.defaultRadius}" step="50">
+                <div class="fr-quick">
+                    <button class="fr-btn fr-btn-pick" id="fr-pick">🎯 Точка на карті</button>
+                    <button class="fr-btn fr-btn-pick" id="fr-coord-pick">📋 MGRS</button>
                 </div>
 
-                <textarea id="fr-input" placeholder="Координати:&#10;48.4501, 34.9802&#10;або з висотою: 48.45, 34.98, 150"></textarea>
-                <button class="fr-btn fr-btn-wide" id="fr-add">Побудувати</button>
-
-                <div class="fr-section">
-                    <label class="fr-check"><input type="checkbox" id="fr-show-points" ${settings.showPoints ? 'checked' : ''}> Показувати точки</label>
-                    <div class="fr-row">
-                        <label>Період:</label>
-                        <select id="fr-time-filter">
-                            <option value="all">Усі</option>
-                            <option value="day">Останні 24 год</option>
-                            <option value="week">Останній тиждень</option>
-                            <option value="month">Останній місяць</option>
-                        </select>
-                    </div>
-                    <div class="fr-row">
-                        <label>Фільтр збиття:</label>
-                        <select id="fr-means-filter"></select>
-                    </div>
-                    <div class="fr-row">
-                        <label>Фільтр засобу:</label>
-                        <select id="fr-zasib-filter"></select>
-                    </div>
-                    <div class="fr-legend" id="fr-legend"></div>
-                </div>
-
-                <div class="fr-section">
-                    <span class="fr-label">Коридор відображення</span>
-                    <div class="fr-row">
-                        <label>Ширина (м):</label>
-                        <input type="number" id="fr-corridor-w" value="${settings.corridorWidth}" step="100" min="100">
-                    </div>
-                    <div class="fr-grid">
-                        <button class="fr-btn fr-btn-pick" id="fr-corridor">📐 Коридор</button>
-                        <button class="fr-btn fr-btn-danger" id="fr-corridor-clear">Скинути коридор</button>
-                    </div>
-                    <span class="fr-label" id="fr-corridor-status">Коридор не задано (лише на цей запуск)</span>
-                </div>
-
-                <div class="fr-section">
-                    <span class="fr-label">Лінійка (відстань / час)</span>
-                    <label class="fr-check"><input type="checkbox" id="fr-ruler-show" checked> Показувати лінійку на карті</label>
-                    <div class="fr-row">
-                        <label>Швидкість (км/год):</label>
-                        <input type="number" id="fr-ruler-speed" value="${settings.rulerSpeedKmh || 5}" step="0.5" min="0.1">
-                    </div>
-                    <div class="fr-row">
-                        <label>Колір лінійки:</label>
-                        <input type="color" id="fr-ruler-color" value="${settings.rulerColor || '#22d3ee'}">
-                    </div>
-                    <div class="fr-grid">
-                        <button class="fr-btn fr-btn-pick" id="fr-ruler">📏 Малювати</button>
-                        <button class="fr-btn" id="fr-ruler-toggle">👁 Сховати</button>
-                    </div>
-                    <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ruler-clear">Скинути лінійку</button>
-                    <div class="fr-ruler-total" id="fr-ruler-status">Лінійка не задана (лише на цей запуск)</div>
-                </div>
-
-                <div class="fr-section">
-                    <span class="fr-label">Борт (окремо від лінійки; швидкість спільна)</span>
-                    <div class="fr-label" style="color:#94a3b8;font-size:10px;line-height:1.35">«Летіти» — рух за курсом без цілі. «Прикріпити до треку» — наш борт слідує за стрілкою треку на самій карті (не FalconRoute).</div>
-                    <div class="fr-row">
-                        <label>Позивний:</label>
-                        <input type="text" id="fr-callsign" value="${settings.callsign || 'Falcon'}" maxlength="16" placeholder="Falcon">
-                    </div>
-                    <div class="fr-row">
-                        <label>Колір борта:</label>
-                        <input type="color" id="fr-flight-color" value="${settings.flightColor || '#22d3ee'}">
-                    </div>
-                    <div class="fr-grid">
-                        <button class="fr-btn fr-btn-pick" id="fr-flight-place">📍 Поставити</button>
-                        <button class="fr-btn fr-btn-ok" id="fr-flight-goto">✈ Летіти</button>
-                    </div>
-                    <button class="fr-btn fr-btn-wide" id="fr-flight-attach">🔗 Прикріпити до треку</button>
-                    <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-flight-stop">⏹ Прибрати борт</button>
-                    <div class="fr-label" id="fr-flight-status">Борт не виставлено</div>
-                    <div class="fr-row">
-                        <label>Дистанція до:</label>
-                        <select id="fr-range-target">
-                            <option value="">— не вимірювати —</option>
-                        </select>
-                    </div>
-                    <div class="fr-ruler-total" id="fr-flight-range">Обери борт, щоб міряти відстань</div>
-                    <div class="fr-label" id="fr-flight-distances" style="white-space:pre-line;opacity:.8">Немає інших бортів онлайн</div>
-                </div>
-
-                <div class="fr-section">
-                    <div class="fr-row">
-                        <label>Формат координат:</label>
-                        <select id="fr-coord-format">
-                            <option value="dd">DD (десяткові)</option>
-                            <option value="dm">DM</option>
-                            <option value="dms">DMS</option>
-                            <option value="mgrs">MGRS</option>
-                        </select>
-                    </div>
-                    <button class="fr-btn fr-btn-wide" id="fr-copy">📋 Скопіювати видимі координати</button>
-                </div>
-
-                <details class="fr-details fr-section">
-                    <summary>⚙ Збиття / кольори</summary>
-                    <div class="fr-means-list" id="fr-means-edit"></div>
-                    <div class="fr-means-row">
-                        <input type="text" id="fr-means-new-name" placeholder="Нове збиття">
-                        <input type="color" id="fr-means-new-color" value="#22c55e">
-                        <button class="fr-btn" id="fr-means-add">＋</button>
+                <details class="fr-acc" open data-fr-acc="points">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">📍</span>Точки збиття</span></summary>
+                    <div class="fr-acc-body">
+                        <div class="fr-field-grid">
+                            <div class="fr-field">
+                                <label for="fr-means">Збиття</label>
+                                <select id="fr-means"></select>
+                            </div>
+                            <div class="fr-field">
+                                <label for="fr-zasib">Засіб</label>
+                                <select id="fr-zasib"></select>
+                            </div>
+                            <div class="fr-field">
+                                <label for="fr-alt">Висота, м</label>
+                                <input type="number" id="fr-alt" value="${settings.defaultAlt}" step="50" min="0">
+                            </div>
+                            <div class="fr-field">
+                                <label for="fr-default-rad">Радіус, м</label>
+                                <input type="number" id="fr-default-rad" value="${settings.defaultRadius}" step="50">
+                            </div>
+                        </div>
+                        <textarea id="fr-input" placeholder="Встав координати:&#10;48.4501, 34.9802&#10;або з висотою: 48.45, 34.98, 150"></textarea>
+                        <button class="fr-btn fr-btn-wide fr-btn-primary" id="fr-add">＋ Побудувати точки</button>
+                        <div class="fr-count" id="fr-count"><span>Точок: 0</span></div>
+                        <div class="fr-list" id="fr-container"></div>
                     </div>
                 </details>
 
-                <details class="fr-details fr-section">
-                    <summary>⚙ Засоби (без кольорів)</summary>
-                    <div class="fr-means-list" id="fr-zasib-edit"></div>
-                    <div class="fr-means-row">
-                        <input type="text" id="fr-zasib-new-name" placeholder="Новий засіб">
-                        <button class="fr-btn" id="fr-zasib-add">＋</button>
+                <details class="fr-acc" data-fr-acc="filters">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">🎛</span>Фільтри карти</span></summary>
+                    <div class="fr-acc-body">
+                        <label class="fr-check"><input type="checkbox" id="fr-show-points" ${settings.showPoints ? 'checked' : ''}> Показувати точки на карті</label>
+                        <div class="fr-field">
+                            <label for="fr-time-filter">Період</label>
+                            <select id="fr-time-filter">
+                                <option value="all">Усі</option>
+                                <option value="day">Останні 24 год</option>
+                                <option value="week">Останній тиждень</option>
+                                <option value="month">Останній місяць</option>
+                            </select>
+                        </div>
+                        <div class="fr-field-grid">
+                            <div class="fr-field">
+                                <label for="fr-means-filter">Фільтр збиття</label>
+                                <select id="fr-means-filter"></select>
+                            </div>
+                            <div class="fr-field">
+                                <label for="fr-zasib-filter">Фільтр засобу</label>
+                                <select id="fr-zasib-filter"></select>
+                            </div>
+                        </div>
+                        <div class="fr-legend" id="fr-legend"></div>
                     </div>
                 </details>
 
-                <div class="fr-section">
-                    <span class="fr-label">Експорт / імпорт</span>
-                    <div class="fr-row">
-                        <label for="fr-format">Формат:</label>
-                        <select id="fr-format">
-                            <option value="txt">.TXT</option>
-                            <option value="json">.JSON</option>
-                            <option value="geojson" selected>.GEOJSON</option>
-                        </select>
+                <details class="fr-acc" data-fr-acc="corridor">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">🛤</span>Коридор</span></summary>
+                    <div class="fr-acc-body">
+                        <div class="fr-hint">Обмежує видимі точки смугою на карті (лише на цей запуск).</div>
+                        <div class="fr-row">
+                            <label>Ширина, м</label>
+                            <input type="number" id="fr-corridor-w" value="${settings.corridorWidth}" step="100" min="100">
+                        </div>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-pick" id="fr-corridor">📐 Малювати</button>
+                            <button class="fr-btn fr-btn-danger" id="fr-corridor-clear">Скинути</button>
+                        </div>
+                        <div class="fr-status muted" id="fr-corridor-status">Коридор не задано</div>
                     </div>
-                    <div class="fr-grid">
-                        <button class="fr-btn" id="fr-export">⬇ Завантажити</button>
-                        <button class="fr-btn" id="fr-import">⬆ Імпортувати</button>
-                        <input type="file" id="fr-file" accept=".txt,.json,.geojson" style="display:none">
-                    </div>
-                </div>
+                </details>
 
-                <div class="fr-count" id="fr-count">Точок: 0</div>
-                <div class="fr-list" id="fr-container"></div>
+                <details class="fr-acc" data-fr-acc="ruler">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">📏</span>Лінійка</span></summary>
+                    <div class="fr-acc-body">
+                        <label class="fr-check"><input type="checkbox" id="fr-ruler-show" checked> Показувати лінійку</label>
+                        <div class="fr-field-grid">
+                            <div class="fr-field">
+                                <label for="fr-ruler-speed">Швидкість, км/год</label>
+                                <input type="number" id="fr-ruler-speed" value="${settings.rulerSpeedKmh || 5}" step="0.5" min="0.1">
+                            </div>
+                            <div class="fr-field">
+                                <label for="fr-ruler-color">Колір</label>
+                                <input type="color" id="fr-ruler-color" value="${settings.rulerColor || '#22d3ee'}">
+                            </div>
+                        </div>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-pick" id="fr-ruler">📏 Малювати</button>
+                            <button class="fr-btn" id="fr-ruler-toggle">👁 Сховати</button>
+                        </div>
+                        <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ruler-clear">Скинути лінійку</button>
+                        <div class="fr-status muted" id="fr-ruler-status">Лінійка не задана</div>
+                    </div>
+                </details>
+
+                <details class="fr-acc" open data-fr-acc="flight">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">✈</span>Борт</span></summary>
+                    <div class="fr-acc-body">
+                        <div class="fr-hint">«Летіти» — рух за курсом. «Прикріпити до треку» — слідувати за стрілкою на карті-хості. Швидкість спільна з лінійкою.</div>
+                        <div class="fr-field-grid">
+                            <div class="fr-field">
+                                <label for="fr-callsign">Позивний</label>
+                                <input type="text" id="fr-callsign" value="${settings.callsign || 'Falcon'}" maxlength="16" placeholder="Falcon">
+                            </div>
+                            <div class="fr-field">
+                                <label for="fr-flight-color">Колір</label>
+                                <input type="color" id="fr-flight-color" value="${settings.flightColor || '#22d3ee'}">
+                            </div>
+                        </div>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-pick" id="fr-flight-place">📍 Поставити</button>
+                            <button class="fr-btn fr-btn-ok" id="fr-flight-goto">✈ Летіти</button>
+                        </div>
+                        <button class="fr-btn fr-btn-wide" id="fr-flight-attach">🔗 Прикріпити до треку</button>
+                        <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-flight-stop">⏹ Прибрати борт</button>
+                        <div class="fr-status muted" id="fr-flight-status">Борт не виставлено</div>
+                        <div class="fr-field">
+                            <label for="fr-range-target">Дистанція до борта</label>
+                            <select id="fr-range-target">
+                                <option value="">— не вимірювати —</option>
+                            </select>
+                        </div>
+                        <div class="fr-ruler-total" id="fr-flight-range">Обери борт для вимірювання</div>
+                        <div class="fr-label" id="fr-flight-distances" style="white-space:pre-line;opacity:.85">Немає інших бортів онлайн</div>
+                    </div>
+                </details>
+
+                <details class="fr-acc" data-fr-acc="coords">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">🗺</span>Координати</span></summary>
+                    <div class="fr-acc-body">
+                        <div class="fr-field">
+                            <label for="fr-coord-format">Формат</label>
+                            <select id="fr-coord-format">
+                                <option value="dd">DD (десяткові)</option>
+                                <option value="dm">DM</option>
+                                <option value="dms">DMS</option>
+                                <option value="mgrs">MGRS</option>
+                            </select>
+                        </div>
+                        <button class="fr-btn fr-btn-wide" id="fr-copy">📋 Скопіювати видимі</button>
+                    </div>
+                </details>
+
+                <details class="fr-acc" data-fr-acc="catalog">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">⚙</span>Каталоги</span></summary>
+                    <div class="fr-acc-body">
+                        <details class="fr-details">
+                            <summary>Збиття / кольори</summary>
+                            <div class="fr-means-list" id="fr-means-edit"></div>
+                            <div class="fr-means-row">
+                                <input type="text" id="fr-means-new-name" placeholder="Нове збиття">
+                                <input type="color" id="fr-means-new-color" value="#22c55e">
+                                <button class="fr-btn" id="fr-means-add">＋</button>
+                            </div>
+                        </details>
+                        <details class="fr-details">
+                            <summary>Засоби (без кольорів)</summary>
+                            <div class="fr-means-list" id="fr-zasib-edit"></div>
+                            <div class="fr-means-row">
+                                <input type="text" id="fr-zasib-new-name" placeholder="Новий засіб">
+                                <button class="fr-btn" id="fr-zasib-add">＋</button>
+                            </div>
+                        </details>
+                    </div>
+                </details>
+
+                <details class="fr-acc" data-fr-acc="io">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">💾</span>Експорт / імпорт</span></summary>
+                    <div class="fr-acc-body">
+                        <div class="fr-field">
+                            <label for="fr-format">Формат файлу</label>
+                            <select id="fr-format">
+                                <option value="txt">.TXT</option>
+                                <option value="json">.JSON</option>
+                                <option value="geojson" selected>.GEOJSON</option>
+                            </select>
+                        </div>
+                        <div class="fr-grid">
+                            <button class="fr-btn" id="fr-export">⬇ Завантажити</button>
+                            <button class="fr-btn" id="fr-import">⬆ Імпортувати</button>
+                            <input type="file" id="fr-file" accept=".txt,.json,.geojson" style="display:none">
+                        </div>
+                    </div>
+                </details>
+            </div>
+            <div class="fr-footer">
                 <div class="fr-sync" id="fr-sync">${FIREBASE_ENABLED ? 'Firebase: підключення…' : 'Локальний режим (без Firebase)'}</div>
             </div>
         `;
@@ -1189,13 +1361,40 @@
 
         const syncEl = document.getElementById('fr-sync');
         const mainBody = document.getElementById('fr-main');
+        const footerEl = panel.querySelector('.fr-footer');
         const toggleBtn = document.getElementById('fr-toggle');
         toggleBtn.onclick = (e) => {
             e.stopPropagation();
+            e.preventDefault();
             const closed = mainBody.classList.toggle('hidden');
             panel.classList.toggle('fr-collapsed', closed);
+            if (footerEl) footerEl.style.display = closed ? 'none' : '';
             toggleBtn.textContent = closed ? '□' : '─';
+            toggleBtn.title = closed ? 'Розгорнути' : 'Згорнути';
         };
+
+        // Памʼять відкритих секцій
+        const ACC_KEY = 'falcon_route_ui_acc_v1';
+        try {
+            const savedAcc = JSON.parse(localStorage.getItem(ACC_KEY) || 'null');
+            if (savedAcc && typeof savedAcc === 'object') {
+                panel.querySelectorAll('details.fr-acc[data-fr-acc]').forEach((d) => {
+                    const key = d.getAttribute('data-fr-acc');
+                    if (key in savedAcc) d.open = !!savedAcc[key];
+                });
+            }
+        } catch (_) { /* ignore */ }
+        panel.querySelectorAll('details.fr-acc[data-fr-acc]').forEach((d) => {
+            d.addEventListener('toggle', () => {
+                try {
+                    const next = {};
+                    panel.querySelectorAll('details.fr-acc[data-fr-acc]').forEach((el) => {
+                        next[el.getAttribute('data-fr-acc')] = el.open;
+                    });
+                    localStorage.setItem(ACC_KEY, JSON.stringify(next));
+                } catch (_) { /* ignore */ }
+            });
+        });
 
         // Скрол лише в панелі — не віддавати колесо карті / не «згортати» огляд
         const stopScrollBubble = (e) => e.stopPropagation();
@@ -3399,7 +3598,10 @@
 
         function setFlightStatus(text) {
             const el = document.getElementById('fr-flight-status');
-            if (el) el.textContent = text;
+            if (!el) return;
+            el.textContent = text || '';
+            const idle = !text || /не виставлено/i.test(text);
+            el.classList.toggle('muted', idle);
         }
 
         async function pushMyFlight() {
