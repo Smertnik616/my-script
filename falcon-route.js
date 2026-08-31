@@ -462,7 +462,7 @@
         };
     }
 
-    const FR_BUILD = 'plane-compass-4';
+    const FR_BUILD = 'drag-ruler-5';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -650,7 +650,9 @@
         let isPlaceAircraftMode = false;
         let isFlyToMode = false;
         let isDraggingHeading = false;
+        let isDraggingPlane = false;
         let headingDragTip = null;
+        let planeDragPos = null;
         let placeAircraftListener = null;
         let flyToListener = null;
         let cesiumHeadingHandler = null;
@@ -740,15 +742,21 @@
                 .fr-map-label .fr-means-tag { background: rgba(15,16,21,.92); color: #fde68a; font: bold 10px/1.2 system-ui; padding: 2px 5px; border-radius: 3px; border: 1px solid rgba(253,230,138,.45); max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
                 .fr-ruler-label { position: absolute; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap; z-index: 2; }
                 .fr-ruler-label .fr-ruler-chip {
-                    background: rgba(8,47,73,.94); color: #f0f9ff;
-                    font: 600 12px/1.3 system-ui, -apple-system, sans-serif;
-                    padding: 5px 9px; border-radius: 7px;
-                    border: 1px solid rgba(125,211,252,.95);
-                    box-shadow: 0 0 0 1px rgba(8,47,73,.55), 0 4px 14px rgba(0,0,0,.5);
+                    background: transparent; color: #ecfeff;
+                    font: 700 12px/1.15 system-ui, -apple-system, sans-serif;
+                    padding: 0; border: none; border-radius: 0; box-shadow: none;
                     -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision;
-                    backdrop-filter: blur(4px);
+                    text-shadow:
+                        0 0 4px rgba(8,47,73,.95),
+                        -1px -1px 0 #0c4a6e, 1px -1px 0 #0c4a6e,
+                        -1px 1px 0 #0c4a6e, 1px 1px 0 #0c4a6e,
+                        0 1px 3px rgba(0,0,0,.65);
                 }
-                .fr-flight-label .fr-ruler-chip { font-size: 11px; padding: 4px 8px; }
+                .fr-flight-label .fr-ruler-chip {
+                    font-size: 11px; padding: 3px 7px; border-radius: 6px;
+                    background: rgba(8,47,73,.92); border: 1px solid rgba(125,211,252,.85);
+                    box-shadow: 0 2px 8px rgba(0,0,0,.45); text-shadow: none;
+                }
                 #falcon-route-ui .fr-ruler-total { color: #7dd3fc; font-size: 11px; font-weight: bold; line-height: 1.35; }
             </style>
             <div class="fr-head" id="fr-drag">
@@ -830,7 +838,7 @@
 
                 <div class="fr-section">
                     <span class="fr-label">Борт (окремо від лінійки; швидкість спільна)</span>
-                    <div class="fr-label" style="color:#94a3b8;font-size:10px;line-height:1.35">Тягни жовту ручку курсу впереді літака, щоб повернути ніс / змінити напрямок польоту</div>
+                    <div class="fr-label" style="color:#94a3b8;font-size:10px;line-height:1.35">Перетягни літак мишкою, щоб переставити. Жовта ручка — змінити курс.</div>
                     <div class="fr-row">
                         <label>Позивний:</label>
                         <input type="text" id="fr-callsign" value="${settings.callsign || 'Falcon'}" maxlength="16" placeholder="Falcon">
@@ -1334,12 +1342,16 @@
             return totalM;
         }
 
-        function createGoogleRulerLabel(position, text) {
+        function createGoogleRulerLabel(position, text, bearingDegVal) {
+            let rot = Number.isFinite(bearingDegVal) ? bearingDegVal : 0;
+            // Текст читабельний (не догори ногами)
+            if (rot > 90 && rot < 270) rot = (rot + 180) % 360;
             class FrRulerLabel extends google.maps.OverlayView {
                 constructor() {
                     super();
                     this.position = position;
                     this.div = null;
+                    this.rot = rot;
                 }
                 onAdd() {
                     this.div = document.createElement('div');
@@ -1357,6 +1369,9 @@
                     if (!p) return;
                     this.div.style.left = p.x + 'px';
                     this.div.style.top = p.y + 'px';
+                    // Зсув перпендикулярно лінії + поворот вздовж сегмента
+                    this.div.style.transform =
+                        `translate(-50%, -50%) rotate(${this.rot}deg) translate(0, -10px)`;
                 }
                 onRemove() {
                     if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
@@ -1449,7 +1464,7 @@
                     const segM = haversineM(a.lat, a.lon, b.lat, b.lon);
                     const mid = new google.maps.LatLng((a.lat + b.lat) / 2, (a.lon + b.lon) / 2);
                     const text = `${formatDistanceKm(segM)} · ${formatTravelTime(segM, speed)}`;
-                    rulerOverlays.push(createGoogleRulerLabel(mid, text));
+                    rulerOverlays.push(createGoogleRulerLabel(mid, text, bearingDeg(a, b)));
                 }
                 return;
             }
@@ -1492,19 +1507,24 @@
                 const a = pts[i];
                 const b = pts[i + 1];
                 const segM = haversineM(a.lat, a.lon, b.lat, b.lon);
-                const text = `${formatDistanceKm(segM)}\n${formatTravelTime(segM, speed)}`;
+                const text = `${formatDistanceKm(segM)} · ${formatTravelTime(segM, speed)}`;
+                let rot = bearingDeg(a, b);
+                if (rot > 90 && rot < 270) rot = (rot + 180) % 360;
                 const midEnt = map.entities.add({
                     position: Cartesian3.fromDegrees((a.lon + b.lon) / 2, (a.lat + b.lat) / 2),
                     label: {
                         text,
-                        font: 'bold 13px sans-serif',
+                        font: 'bold 12px sans-serif',
                         fillColor: toCesiumColor({ red: 0.94, green: 0.98, blue: 1, alpha: 1 }),
-                        outlineColor: toCesiumColor({ red: 0, green: 0, blue: 0, alpha: 1 }),
-                        outlineWidth: 3,
-                        showBackground: true,
-                        backgroundColor: toCesiumColor({ red: 0.03, green: 0.18, blue: 0.28, alpha: 0.92 }),
-                        backgroundPadding: Cesium?.Cartesian2
-                            ? new Cesium.Cartesian2(8, 5)
+                        outlineColor: toCesiumColor({ red: 0.05, green: 0.29, blue: 0.43, alpha: 1 }),
+                        outlineWidth: 4,
+                        showBackground: false,
+                        style: Cesium?.LabelStyle?.FILL_AND_OUTLINE,
+                        pixelOffset: Cesium?.Cartesian2
+                            ? new Cesium.Cartesian2(0, -12)
+                            : undefined,
+                        rotation: Cesium?.Math
+                            ? -Cesium.Math.toRadians(rot)
                             : undefined,
                         disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
@@ -2184,6 +2204,9 @@
                     (slot.handleListeners || []).forEach(l => {
                         try { google.maps.event.removeListener(l); } catch (_) { /* ignore */ }
                     });
+                    (slot.planeListeners || []).forEach(l => {
+                        try { google.maps.event.removeListener(l); } catch (_) { /* ignore */ }
+                    });
                 } else {
                     if (slot.entity) map.entities.remove(slot.entity);
                     if (slot.labelEnt) map.entities.remove(slot.labelEnt);
@@ -2194,7 +2217,9 @@
             } catch (_) { /* ignore */ }
             if (id === CLIENT_ID) {
                 isDraggingHeading = false;
+                isDraggingPlane = false;
                 headingDragTip = null;
+                planeDragPos = null;
                 destroyCesiumHeadingDrag();
             }
             delete flightMarkers[id];
@@ -2272,11 +2297,35 @@
             startFlightLoop();
         }
 
+        function applyPlaneMove(lat, lon) {
+            if (!myFlight?.active) return;
+            myFlight.lat = lat;
+            myFlight.lon = lon;
+            myFlight.from = { lat, lon };
+            myFlight.to = null;
+            myFlight.startedAt = null;
+            myFlight.updatedAt = Date.now();
+            myFlight.speedKmh = getRulerSpeed();
+            setFlightStatus(`${myFlight.callsign}: переміщено на нову позицію`);
+            pushMyFlight();
+            ensurePushTimer();
+            startFlightLoop();
+        }
+
         function destroyCesiumHeadingDrag() {
             if (cesiumHeadingHandler) {
                 try { cesiumHeadingHandler.destroy(); } catch (_) { /* ignore */ }
                 cesiumHeadingHandler = null;
             }
+        }
+
+        function setCesiumCamDrag(enabled) {
+            const c = map.scene?.screenSpaceCameraController;
+            if (!c) return;
+            c.enableRotate = enabled;
+            c.enableTranslate = enabled;
+            c.enableZoom = enabled;
+            c.enableTilt = enabled;
         }
 
         function ensureCesiumHeadingDrag() {
@@ -2287,44 +2336,67 @@
 
             handler.setInputAction((movement) => {
                 const slot = flightMarkers[CLIENT_ID];
-                if (!slot?.headingHandle || !myFlight?.active) return;
+                if (!slot || !myFlight?.active) return;
                 const picked = map.scene.pick(movement.position);
-                if (!picked || picked.id !== slot.headingHandle) return;
-                isDraggingHeading = true;
-                map.scene.screenSpaceCameraController.enableRotate = false;
-                map.scene.screenSpaceCameraController.enableTranslate = false;
-                map.scene.screenSpaceCameraController.enableZoom = false;
-                map.scene.screenSpaceCameraController.enableTilt = false;
+                if (!picked?.id) return;
+                if (slot.headingHandle && picked.id === slot.headingHandle) {
+                    isDraggingHeading = true;
+                    setCesiumCamDrag(false);
+                    return;
+                }
+                if (slot.entity && picked.id === slot.entity) {
+                    isDraggingPlane = true;
+                    planeDragPos = { lat: myFlight.lat, lon: myFlight.lon };
+                    setCesiumCamDrag(false);
+                }
             }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
 
             handler.setInputAction((movement) => {
-                if (!isDraggingHeading || !myFlight?.active) return;
+                if (!myFlight?.active) return;
                 const cartesian = map.camera.pickEllipsoid(movement.endPosition, map.scene.globe.ellipsoid);
                 if (!cartesian) return;
                 const carto = map.scene.globe.ellipsoid.cartesianToCartographic(cartesian);
-                headingDragTip = {
+                const tip = {
                     lat: carto.latitude * 57.29577951308232,
                     lon: carto.longitude * 57.29577951308232
                 };
-                const cur = resolveFlightPos(myFlight) || myFlight;
-                myFlight.heading = bearingDeg(cur, headingDragTip);
-                upsertFlightMarker(CLIENT_ID, myFlight, {
-                    lat: cur.lat,
-                    lon: cur.lon,
-                    heading: myFlight.heading
-                });
+                if (isDraggingHeading) {
+                    headingDragTip = tip;
+                    const cur = resolveFlightPos(myFlight) || myFlight;
+                    myFlight.heading = bearingDeg(cur, headingDragTip);
+                    upsertFlightMarker(CLIENT_ID, myFlight, {
+                        lat: cur.lat,
+                        lon: cur.lon,
+                        heading: myFlight.heading
+                    });
+                } else if (isDraggingPlane) {
+                    planeDragPos = tip;
+                    myFlight.lat = tip.lat;
+                    myFlight.lon = tip.lon;
+                    upsertFlightMarker(CLIENT_ID, myFlight, {
+                        lat: tip.lat,
+                        lon: tip.lon,
+                        heading: myFlight.heading || 0
+                    });
+                }
             }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
             const endDrag = () => {
-                if (!isDraggingHeading) return;
-                const tip = headingDragTip;
-                isDraggingHeading = false;
-                headingDragTip = null;
-                map.scene.screenSpaceCameraController.enableRotate = true;
-                map.scene.screenSpaceCameraController.enableTranslate = true;
-                map.scene.screenSpaceCameraController.enableZoom = true;
-                map.scene.screenSpaceCameraController.enableTilt = true;
-                if (tip) applyCourseFromTip(tip);
+                if (isDraggingHeading) {
+                    const tip = headingDragTip;
+                    isDraggingHeading = false;
+                    headingDragTip = null;
+                    setCesiumCamDrag(true);
+                    if (tip) applyCourseFromTip(tip);
+                    return;
+                }
+                if (isDraggingPlane) {
+                    const pos = planeDragPos;
+                    isDraggingPlane = false;
+                    planeDragPos = null;
+                    setCesiumCamDrag(true);
+                    if (pos) applyPlaneMove(pos.lat, pos.lon);
+                }
             };
             handler.setInputAction(endDrag, Cesium.ScreenSpaceEventType.LEFT_UP);
         }
@@ -2407,7 +2479,9 @@
             listeners.push(handle.addListener('drag', (e) => {
                 if (!e?.latLng || !myFlight?.active) return;
                 headingDragTip = { lat: e.latLng.lat(), lon: e.latLng.lng() };
-                const cur = resolveFlightPos(myFlight) || myFlight;
+                const cur = isDraggingPlane && planeDragPos
+                    ? planeDragPos
+                    : (resolveFlightPos(myFlight) || myFlight);
                 myFlight.heading = bearingDeg(cur, headingDragTip);
                 upsertFlightMarker(CLIENT_ID, myFlight, {
                     lat: cur.lat,
@@ -2427,6 +2501,39 @@
             return listeners;
         }
 
+        function wireGooglePlaneDrag(marker) {
+            const listeners = [];
+            listeners.push(marker.addListener('mousedown', (e) => {
+                e?.stop?.();
+                e?.domEvent?.stopPropagation?.();
+            }));
+            listeners.push(marker.addListener('dragstart', () => {
+                isDraggingPlane = true;
+                if (map.setOptions) map.setOptions({ draggable: false });
+            }));
+            listeners.push(marker.addListener('drag', (e) => {
+                if (!e?.latLng || !myFlight?.active) return;
+                planeDragPos = { lat: e.latLng.lat(), lon: e.latLng.lng() };
+                myFlight.lat = planeDragPos.lat;
+                myFlight.lon = planeDragPos.lon;
+                upsertFlightMarker(CLIENT_ID, myFlight, {
+                    lat: planeDragPos.lat,
+                    lon: planeDragPos.lon,
+                    heading: myFlight.heading || 0
+                });
+            }));
+            listeners.push(marker.addListener('dragend', (e) => {
+                const pos = e?.latLng
+                    ? { lat: e.latLng.lat(), lon: e.latLng.lng() }
+                    : planeDragPos;
+                isDraggingPlane = false;
+                planeDragPos = null;
+                if (map.setOptions) map.setOptions({ draggable: true });
+                if (pos) applyPlaneMove(pos.lat, pos.lon);
+            }));
+            return listeners;
+        }
+
         function upsertFlightMarker(id, flight, pos) {
             if (!pos) return;
             const color = flight.color || '#22d3ee';
@@ -2436,7 +2543,7 @@
             const labelText = (isMe ? '● ' : '') + callsign;
             const tip = headingTipFrom(pos, heading);
             const hasCourse = !!(flight.to && Number.isFinite(flight.to.lat) && Number.isFinite(flight.to.lon)
-                && !(isDraggingHeading && isMe));
+                && !(isDraggingHeading && isMe) && !(isDraggingPlane && isMe));
 
             if (mapType === 'google') {
                 let slot = flightMarkers[id];
@@ -2449,9 +2556,11 @@
                         map,
                         icon: googlePlaneIcon(color, heading, isMe),
                         zIndex: 200,
-                        title: callsign,
+                        title: isMe ? 'Перетягни борт · жовта ручка = курс' : callsign,
                         optimized: false,
-                        clickable: false
+                        clickable: isMe,
+                        draggable: isMe,
+                        cursor: isMe ? 'grab' : undefined
                     });
                     const labelOv = createFlightCallsignOverlay(
                         new google.maps.LatLng(pos.lat, pos.lon),
@@ -2482,6 +2591,7 @@
                     });
                     let headingHandle = null;
                     let handleListeners = [];
+                    let planeListeners = [];
                     if (isMe) {
                         headingHandle = new google.maps.Marker({
                             position: tipLatLng,
@@ -2501,12 +2611,16 @@
                             }
                         });
                         handleListeners = wireGoogleHeadingHandle(headingHandle);
+                        planeListeners = wireGooglePlaneDrag(marker);
                     }
                     flightMarkers[id] = {
-                        marker, labelOv, headingLine, courseLine, headingHandle, handleListeners, color
+                        marker, labelOv, headingLine, courseLine, headingHandle,
+                        handleListeners, planeListeners, color
                     };
                 } else {
-                    slot.marker.setPosition(planeLatLng);
+                    if (!(isDraggingPlane && isMe)) {
+                        slot.marker.setPosition(planeLatLng);
+                    }
                     slot.marker.setIcon(googlePlaneIcon(color, heading, isMe));
                     slot.labelOv?.setPos(new google.maps.LatLng(pos.lat, pos.lon));
                     slot.labelOv?.setText?.(labelText, color);
@@ -2730,6 +2844,15 @@
             let myPos = null;
 
             if (myFlight?.active) {
+                if (isDraggingPlane && planeDragPos) {
+                    myPos = { lat: planeDragPos.lat, lon: planeDragPos.lon };
+                    upsertFlightMarker(CLIENT_ID, myFlight, {
+                        lat: planeDragPos.lat,
+                        lon: planeDragPos.lon,
+                        heading: myFlight.heading || 0
+                    });
+                    activeIds.add(CLIENT_ID);
+                } else {
                 const pos = resolveFlightPos(myFlight, now);
                 if (!pos) {
                     removeMyAircraft();
@@ -2751,7 +2874,7 @@
                         setFlightStatus(
                             `${myFlight.callsign}: в польоті · ${formatDistanceKm(pos.traveledM || 0)} / ${formatDistanceKm(pos.totalM || 0)} · лишилось ${formatTravelTime(left, myFlight.speedKmh)}`
                         );
-                    } else {
+                    } else if (!isDraggingHeading) {
                         setFlightStatus(`${myFlight.callsign}: на позиції · ${getRulerSpeed()} км/год`);
                     }
                     myPos = { lat: myFlight.lat, lon: myFlight.lon };
@@ -2761,6 +2884,7 @@
                         heading: myFlight.heading || 0
                     });
                     activeIds.add(CLIENT_ID);
+                }
                 }
             }
 
