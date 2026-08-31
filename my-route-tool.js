@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'mgrs-copy-10';
+    const FR_BUILD = 'plane-sm-11';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -486,16 +486,16 @@
     }
 
     function planeBillboardImage(color) {
-        const key = String(color || '#22d3ee').toLowerCase() + '|v4';
+        const key = String(color || '#22d3ee').toLowerCase() + '|v5sm';
         if (planeBillboardCache[key]) return planeBillboardCache[key];
         // Коротка риска на носі; довга лінія курсу — окрема polyline на карті
         const svg =
-            `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">` +
+            `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">` +
             `<defs><filter id="s" x="-40%" y="-40%" width="180%" height="180%">` +
-            `<feDropShadow dx="0" dy="1.5" stdDeviation="1.6" flood-color="#000" flood-opacity="0.5"/></filter></defs>` +
-            `<g transform="translate(64 64)" filter="url(#s)">` +
-            `<line x1="0" y1="-14" x2="0" y2="-36" stroke="#fbbf24" stroke-width="3.5" stroke-linecap="round"/>` +
-            `<g transform="scale(1.65)">` +
+            `<feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-color="#000" flood-opacity="0.5"/></filter></defs>` +
+            `<g transform="translate(48 48)" filter="url(#s)">` +
+            `<line x1="0" y1="-10" x2="0" y2="-26" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round"/>` +
+            `<g transform="scale(1.05)">` +
             `<path d="${PLANE_SYMBOL_PATH}" fill="${String(color || '#22d3ee').toLowerCase()}" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/>` +
             `</g></g></svg>`;
         planeBillboardCache[key] = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
@@ -2594,7 +2594,7 @@
                 strokeColor: '#ffffff',
                 strokeWeight: 1.6,
                 strokeOpacity: 1,
-                scale: isMe ? 2.55 : 2.15,
+                scale: isMe ? 1.35 : 1.15,
                 // Google: clockwise from north — як bearingDeg
                 rotation: Number.isFinite(heading) ? heading : 0,
                 anchor: new google.maps.Point(0, 0)
@@ -2797,8 +2797,8 @@
                     position: planePos,
                     billboard: {
                         image: planeBillboardImage(color),
-                        width: isMe ? 96 : 82,
-                        height: isMe ? 96 : 82,
+                        width: isMe ? 52 : 44,
+                        height: isMe ? 52 : 44,
                         rotation,
                         alignedAxis: Cesium?.Cartesian3?.UNIT_Z,
                         disableDepthTestDistance: Number.POSITIVE_INFINITY
