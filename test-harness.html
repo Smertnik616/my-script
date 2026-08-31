@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FalconRoute — тестовий стенд</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0b1220; color: #e5e7eb; font: 13px/1.4 system-ui, sans-serif; }
+    #map { position: absolute; inset: 0; }
+    #hud {
+      position: fixed; z-index: 10; left: 12px; bottom: 12px; max-width: min(420px, calc(100vw - 24px));
+      background: rgba(15, 23, 42, 0.92); border: 1px solid #334155; border-radius: 10px;
+      padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.45);
+    }
+    #hud h1 { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: #93c5fd; }
+    #hud p { margin: 0 0 6px; color: #cbd5e1; }
+    #hud code { background: #1e293b; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+    #hud a { color: #7dd3fc; }
+    #status { margin-top: 8px; color: #86efac; }
+    #status.err { color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="hud">
+    <h1>🦅 FalconRoute test harness</h1>
+    <p>Локальна карта без R2D2. Відкрий <strong>два вікна</strong> з різними <code>?client=</code>, щоб перевірити борти в Firebase.</p>
+    <p>
+      Приклади:
+      <a href="?client=alpha&amp;engine=cesium">client=alpha</a> ·
+      <a href="?client=bravo&amp;engine=cesium" target="_blank">client=bravo (нове вікно)</a>
+    </p>
+    <p>Двигун: <code id="engine-label">…</code></p>
+    <div id="status">Завантаження…</div>
+  </div>
+
+  <script>
+    (function setupClientId() {
+      const params = new URLSearchParams(location.search);
+      const client = (params.get('client') || '').trim();
+      if (client) {
+        localStorage.setItem('falcon_route_client_id_v1', 'test_' + client.replace(/[^\w-]/g, '').slice(0, 24));
+      }
+    })();
+
+    const params = new URLSearchParams(location.search);
+    const engine = (params.get('engine') || 'cesium').toLowerCase();
+    const gmapsKey = params.get('gmapsKey') || localStorage.getItem('falcon_test_gmaps_key') || '';
+    const scriptSrc = (params.get('script') || './falcon-route.js') +
+      ((params.get('script') || './falcon-route.js').includes('?') ? '&' : '?') + 'v=' + Date.now();
+    const statusEl = document.getElementById('status');
+    const engineLabel = document.getElementById('engine-label');
+
+    function setStatus(msg, isErr) {
+      statusEl.textContent = msg;
+      statusEl.className = isErr ? 'err' : '';
+    }
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('Не вдалося завантажити ' + src));
+        document.head.appendChild(s);
+      });
+    }
+
+    async function bootCesium() {
+      engineLabel.textContent = 'cesium (OSM)';
+      await loadScript('https://cesium.com/downloads/cesiumjs/releases/1.119/Build/Cesium/Cesium.js');
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://cesium.com/downloads/cesiumjs/releases/1.119/Build/Cesium/Widgets/widgets.css';
+      document.head.appendChild(link);
+
+      // Без Ion-токена — лише OSM тайли
+      const viewer = new Cesium.Viewer('map', {
+        animation: false,
+        timeline: false,
+        baseLayerPicker: false,
+        geocoder: false,
+        homeButton: false,
+        sceneModePicker: false,
+        navigationHelpButton: false,
+        fullscreenButton: false,
+        infoBox: false,
+        selectionIndicator: false,
+        imageryProvider: false
+      });
+      viewer.imageryLayers.removeAll();
+      viewer.imageryLayers.addImageryProvider(
+        new Cesium.UrlTemplateImageryProvider({
+          url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          credit: '© OpenStreetMap'
+        })
+      );
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(30.5234, 50.4501, 250000)
+      });
+
+      window.viewer = viewer;
+      window.cesiumViewer = viewer;
+      return viewer;
+    }
+
+    async function bootGoogle() {
+      engineLabel.textContent = 'google maps';
+      if (!gmapsKey) {
+        throw new Error(
+          'Для Google Maps додай ключ: ?engine=google&gmapsKey=YOUR_KEY ' +
+          '(або збережи в localStorage falcon_test_gmaps_key). Інакше використай ?engine=cesium'
+        );
+      }
+      localStorage.setItem('falcon_test_gmaps_key', gmapsKey);
+      await loadScript(
+        'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(gmapsKey) + '&v=weekly'
+      );
+      const map = new google.maps.Map(document.getElementById('map'), {
+        center: { lat: 50.4501, lng: 30.5234 },
+        zoom: 8,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false
+      });
+      window.map = map;
+      window.googleMap = map;
+      return map;
+    }
+
+    async function main() {
+      try {
+        if (engine === 'google') await bootGoogle();
+        else await bootCesium();
+
+        setStatus('Карта готова. Завантажую FalconRoute…');
+        await loadScript(scriptSrc + (scriptSrc.includes('?') ? '&' : '?') + 't=' + Date.now());
+        setStatus(
+          'OK · client=' + (localStorage.getItem('falcon_route_client_id_v1') || '?') +
+          ' · скрипт: ' + scriptSrc +
+          ' · панель має з’явитись справа/зверху'
+        );
+      } catch (err) {
+        console.error(err);
+        setStatus(String(err.message || err), true);
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>

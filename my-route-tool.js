@@ -462,20 +462,39 @@
         };
     }
 
+    const FR_BUILD = 'cesium-fix-2';
+
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
         'M 0,-18 L 3.2,-4 L 14,-1.2 L 14,1.5 L 3.4,2.6 L 2,11.5 L 6.2,14 L 6.2,15.8 L 0,13.2 L -6.2,15.8 L -6.2,14 L -2,11.5 L -3.4,2.6 L -14,1.5 L -14,-1.2 L -3.2,-4 Z';
 
     const planeBillboardCache = Object.create(null);
 
+    function toCesiumColor(hexOrObj, alpha) {
+        const Cesium = window.Cesium;
+        const o = typeof hexOrObj === 'string'
+            ? hexToRgbA(hexOrObj, alpha ?? 1)
+            : {
+                red: hexOrObj.red,
+                green: hexOrObj.green,
+                blue: hexOrObj.blue,
+                alpha: alpha ?? hexOrObj.alpha ?? 1
+            };
+        if (Cesium?.Color) return new Cesium.Color(o.red, o.green, o.blue, o.alpha);
+        return o;
+    }
+
     function planeBillboardImage(color) {
         const key = String(color || '#22d3ee').toLowerCase();
         if (planeBillboardCache[key]) return planeBillboardCache[key];
+        // Компас-лінія вперед вшита в SVG — без Entity polyline (вони валили Cesium render)
         const svg =
-            `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">` +
-            `<defs><filter id="s" x="-30%" y="-30%" width="160%" height="160%">` +
-            `<feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-color="#000" flood-opacity="0.55"/></filter></defs>` +
-            `<g transform="translate(32 32)" filter="url(#s)">` +
+            `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">` +
+            `<defs><filter id="s" x="-40%" y="-40%" width="180%" height="180%">` +
+            `<feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-color="#000" flood-opacity="0.55"/></filter></defs>` +
+            `<g transform="translate(48 48)" filter="url(#s)">` +
+            `<line x1="0" y1="-6" x2="0" y2="-44" stroke="#fbbf24" stroke-width="3.2" stroke-linecap="round"/>` +
+            `<circle cx="0" cy="-44" r="4.5" fill="#fbbf24" stroke="#ffffff" stroke-width="1.6"/>` +
             `<path d="${PLANE_SYMBOL_PATH}" fill="${key}" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/>` +
             `</g></svg>`;
         planeBillboardCache[key] = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
@@ -596,6 +615,7 @@
     function initApp(engine) {
         const mapType = engine.type;
         const map = engine.map;
+        console.log('[FALCONROUTE] init', FR_BUILD, mapType);
 
         let settings = loadSettings();
         let poiStore = (JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') || []).map(normalizePoint);
@@ -732,7 +752,7 @@
                 #falcon-route-ui .fr-ruler-total { color: #7dd3fc; font-size: 11px; font-weight: bold; line-height: 1.35; }
             </style>
             <div class="fr-head" id="fr-drag">
-                <span>🦅 FALCONROUTE v2 (Збиття)</span>
+                <span>🦅 FALCONROUTE v2 <span style="opacity:.55;font-weight:600;font-size:10px">${FR_BUILD}</span></span>
                 <span id="fr-toggle" style="cursor:pointer">─</span>
             </div>
             <div class="fr-body" id="fr-main">
@@ -1443,14 +1463,14 @@
                     polyline: {
                         positions,
                         width: 8,
-                        material: { red: 0.05, green: 0.29, blue: 0.43, alpha: 0.9 }
+                        material: toCesiumColor({ red: 0.05, green: 0.29, blue: 0.43, alpha: 0.9 })
                     }
                 }));
                 rulerOverlays.push(map.entities.add({
                     polyline: {
                         positions,
                         width: 3.5,
-                        material: { red: 0.4, green: 0.91, blue: 0.98, alpha: 1 }
+                        material: toCesiumColor({ red: 0.4, green: 0.91, blue: 0.98, alpha: 1 })
                     }
                 }));
             }
@@ -1462,8 +1482,7 @@
                         image: rulerVertexDataUrl(idx + 1, '#22d3ee'),
                         width: 28,
                         height: 28,
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                        heightReference: Cesium?.HeightReference?.CLAMP_TO_GROUND
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
                 });
                 rulerOverlays.push(ent);
@@ -1479,16 +1498,15 @@
                     label: {
                         text,
                         font: 'bold 13px sans-serif',
-                        fillColor: { red: 0.94, green: 0.98, blue: 1, alpha: 1 },
-                        outlineColor: { red: 0, green: 0, blue: 0, alpha: 1 },
+                        fillColor: toCesiumColor({ red: 0.94, green: 0.98, blue: 1, alpha: 1 }),
+                        outlineColor: toCesiumColor({ red: 0, green: 0, blue: 0, alpha: 1 }),
                         outlineWidth: 3,
                         showBackground: true,
-                        backgroundColor: { red: 0.03, green: 0.18, blue: 0.28, alpha: 0.92 },
+                        backgroundColor: toCesiumColor({ red: 0.03, green: 0.18, blue: 0.28, alpha: 0.92 }),
                         backgroundPadding: Cesium?.Cartesian2
                             ? new Cesium.Cartesian2(8, 5)
                             : undefined,
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                        heightReference: Cesium?.HeightReference?.CLAMP_TO_GROUND
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
                 });
                 rulerOverlays.push(midEnt);
@@ -1576,7 +1594,7 @@
                     polyline: {
                         positions,
                         width: 3,
-                        material: { red: 0.22, green: 0.74, blue: 0.97, alpha: 1 }
+                        material: toCesiumColor({ red: 0.22, green: 0.74, blue: 0.97, alpha: 1 })
                     }
                 });
                 corridorOverlays.push(entity);
@@ -1647,10 +1665,10 @@
 
             visible.forEach(pt => {
                 const color = pt.color || getZbyttyaByName(pt.means).color;
-                const rgba = hexToRgbA(color, 1);
-                const fill = hexToRgbA(color, 0.25);
-                const white = { red: 1, green: 1, blue: 1, alpha: 1 };
-                const black = { red: 0, green: 0, blue: 0, alpha: 1 };
+                const rgba = toCesiumColor(color, 1);
+                const fill = toCesiumColor(color, 0.25);
+                const white = toCesiumColor({ red: 1, green: 1, blue: 1, alpha: 1 });
+                const black = toCesiumColor({ red: 0, green: 0, blue: 0, alpha: 1 });
                 const pos = Cartesian3.fromDegrees(pt.lon, pt.lat);
 
                 const entity = map.entities.add({
@@ -1687,7 +1705,7 @@
                         label: {
                             text: pt.means,
                             font: 'bold 10px sans-serif',
-                            fillColor: { red: 0.99, green: 0.9, blue: 0.54, alpha: 1 },
+                            fillColor: toCesiumColor({ red: 0.99, green: 0.9, blue: 0.54, alpha: 1 }),
                             outlineColor: black,
                             outlineWidth: 2,
                             style: window.Cesium?.LabelStyle?.FILL_AND_OUTLINE,
@@ -1697,7 +1715,7 @@
                                 ? new window.Cesium.Cartesian2(0, -18)
                                 : undefined,
                             showBackground: true,
-                            backgroundColor: { red: 0.06, green: 0.06, blue: 0.08, alpha: 0.9 },
+                            backgroundColor: toCesiumColor({ red: 0.06, green: 0.06, blue: 0.08, alpha: 0.9 }),
                             disableDepthTestDistance: Number.POSITIVE_INFINITY
                         }
                     });
@@ -2517,21 +2535,18 @@
                 : (heading * Math.PI / 180);
             const planePos = Cartesian3.fromDegrees(pos.lon, pos.lat);
             const tipPos = Cartesian3.fromDegrees(tip.lon, tip.lat);
-            const coursePos = hasCourse
-                ? Cartesian3.fromDegrees(flight.to.lon, flight.to.lat)
-                : planePos;
 
             if (!slot) {
+                // Без Entity polyline: компас уже в SVG; інакше Cesium падає (toCssColorString)
                 const entity = map.entities.add({
                     position: planePos,
                     billboard: {
                         image: planeBillboardImage(color),
-                        width: isMe ? 60 : 50,
-                        height: isMe ? 60 : 50,
+                        width: isMe ? 72 : 60,
+                        height: isMe ? 72 : 60,
                         rotation,
                         alignedAxis: Cesium?.Cartesian3?.UNIT_Z,
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                        heightReference: Cesium?.HeightReference?.CLAMP_TO_GROUND
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
                 });
                 const labelEnt = map.entities.add({
@@ -2539,34 +2554,15 @@
                     label: {
                         text: labelText,
                         font: 'bold 12px sans-serif',
-                        fillColor: { red: 1, green: 1, blue: 1, alpha: 1 },
-                        outlineColor: { red: 0, green: 0, blue: 0, alpha: 1 },
+                        fillColor: toCesiumColor({ red: 1, green: 1, blue: 1, alpha: 1 }),
+                        outlineColor: toCesiumColor({ red: 0, green: 0, blue: 0, alpha: 1 }),
                         outlineWidth: 3,
                         pixelOffset: Cesium?.Cartesian2
-                            ? new Cesium.Cartesian2(0, -30)
+                            ? new Cesium.Cartesian2(0, -34)
                             : undefined,
                         showBackground: true,
-                        backgroundColor: { red: 0.03, green: 0.18, blue: 0.28, alpha: 0.88 },
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                        heightReference: Cesium?.HeightReference?.CLAMP_TO_GROUND
-                    }
-                });
-                const headingLine = map.entities.add({
-                    polyline: {
-                        positions: [planePos, tipPos],
-                        width: 3,
-                        clampToGround: false,
-                        material: { red: 0.98, green: 0.75, blue: 0.14, alpha: 1 }
-                    }
-                });
-                const courseRgba = hexToRgbA(color, hasCourse ? 0.55 : 0);
-                const courseLine = map.entities.add({
-                    show: hasCourse,
-                    polyline: {
-                        positions: [planePos, coursePos],
-                        width: 2,
-                        clampToGround: false,
-                        material: courseRgba
+                        backgroundColor: toCesiumColor({ red: 0.03, green: 0.18, blue: 0.28, alpha: 0.88 }),
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
                 });
                 let headingHandle = null;
@@ -2574,38 +2570,35 @@
                     headingHandle = map.entities.add({
                         position: tipPos,
                         point: {
-                            pixelSize: 14,
-                            color: { red: 0.98, green: 0.75, blue: 0.14, alpha: 1 },
-                            outlineColor: { red: 1, green: 1, blue: 1, alpha: 1 },
+                            pixelSize: 16,
+                            color: toCesiumColor('#fbbf24'),
+                            outlineColor: toCesiumColor({ red: 1, green: 1, blue: 1, alpha: 1 }),
                             outlineWidth: 2,
-                            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                            heightReference: Cesium?.HeightReference?.CLAMP_TO_GROUND
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY
                         }
                     });
                     ensureCesiumHeadingDrag();
                 }
                 flightMarkers[id] = {
-                    entity, labelEnt, headingLine, courseLine, headingHandle, color
+                    entity, labelEnt, headingLine: null, courseLine: null, headingHandle, color
                 };
             } else {
                 slot.entity.position = planePos;
                 if (slot.entity.billboard) {
-                    slot.entity.billboard.rotation = rotation;
+                    if (typeof slot.entity.billboard.rotation === 'object' && slot.entity.billboard.rotation?.setValue) {
+                        slot.entity.billboard.rotation.setValue(rotation);
+                    } else {
+                        slot.entity.billboard.rotation = rotation;
+                    }
                     if (slot.color !== color) {
                         slot.entity.billboard.image = planeBillboardImage(color);
                         slot.color = color;
                     }
                 }
                 slot.labelEnt.position = planePos;
-                if (slot.labelEnt.label) slot.labelEnt.label.text = labelText;
-                if (slot.headingLine?.polyline) {
-                    slot.headingLine.polyline.positions = [planePos, tipPos];
-                }
-                if (slot.courseLine) {
-                    slot.courseLine.show = hasCourse;
-                    if (slot.courseLine.polyline) {
-                        slot.courseLine.polyline.positions = [planePos, coursePos];
-                    }
+                if (slot.labelEnt.label) {
+                    if (slot.labelEnt.label.text?.setValue) slot.labelEnt.label.text.setValue(labelText);
+                    else slot.labelEnt.label.text = labelText;
                 }
                 if (slot.headingHandle && !(isDraggingHeading && isMe)) {
                     slot.headingHandle.position = tipPos;
