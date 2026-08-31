@@ -462,11 +462,11 @@
         };
     }
 
-    const FR_BUILD = 'cesium-fix-2';
+    const FR_BUILD = 'plane-compass-3';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
-        'M 0,-18 L 3.2,-4 L 14,-1.2 L 14,1.5 L 3.4,2.6 L 2,11.5 L 6.2,14 L 6.2,15.8 L 0,13.2 L -6.2,15.8 L -6.2,14 L -2,11.5 L -3.4,2.6 L -14,1.5 L -14,-1.2 L -3.2,-4 Z';
+        'M 0,-22 L 4,-5 L 17,-1.5 L 17,2 L 4.2,3.2 L 2.5,14 L 7.5,17 L 7.5,19.5 L 0,16.2 L -7.5,19.5 L -7.5,17 L -2.5,14 L -4.2,3.2 L -17,2 L -17,-1.5 L -4,-5 Z';
 
     const planeBillboardCache = Object.create(null);
 
@@ -485,18 +485,19 @@
     }
 
     function planeBillboardImage(color) {
-        const key = String(color || '#22d3ee').toLowerCase();
+        const key = String(color || '#22d3ee').toLowerCase() + '|v3';
         if (planeBillboardCache[key]) return planeBillboardCache[key];
         // Компас-лінія вперед вшита в SVG — без Entity polyline (вони валили Cesium render)
         const svg =
-            `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">` +
-            `<defs><filter id="s" x="-40%" y="-40%" width="180%" height="180%">` +
-            `<feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-color="#000" flood-opacity="0.55"/></filter></defs>` +
-            `<g transform="translate(48 48)" filter="url(#s)">` +
-            `<line x1="0" y1="-6" x2="0" y2="-44" stroke="#fbbf24" stroke-width="3.2" stroke-linecap="round"/>` +
-            `<circle cx="0" cy="-44" r="4.5" fill="#fbbf24" stroke="#ffffff" stroke-width="1.6"/>` +
-            `<path d="${PLANE_SYMBOL_PATH}" fill="${key}" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/>` +
-            `</g></svg>`;
+            `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">` +
+            `<defs><filter id="s" x="-50%" y="-50%" width="200%" height="200%">` +
+            `<feDropShadow dx="0" dy="1.5" stdDeviation="1.8" flood-color="#000" flood-opacity="0.55"/></filter></defs>` +
+            `<g transform="translate(80 80)" filter="url(#s)">` +
+            `<line x1="0" y1="-10" x2="0" y2="-72" stroke="#fbbf24" stroke-width="4" stroke-linecap="round"/>` +
+            `<circle cx="0" cy="-72" r="6" fill="#fbbf24" stroke="#ffffff" stroke-width="2"/>` +
+            `<g transform="scale(1.55)">` +
+            `<path d="${PLANE_SYMBOL_PATH}" fill="${String(color || '#22d3ee').toLowerCase()}" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>` +
+            `</g></g></svg>`;
         planeBillboardCache[key] = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
         return planeBillboardCache[key];
     }
@@ -2208,14 +2209,14 @@
             if (mapType === 'google') {
                 const zoom = typeof map.getZoom === 'function' ? (map.getZoom() || 10) : 10;
                 const mPerPx = 156543.03392 * Math.cos(toRad(lat)) / Math.pow(2, zoom);
-                return Math.max(250, Math.min(25000, mPerPx * 120));
+                return Math.max(400, Math.min(40000, mPerPx * 200));
             }
             try {
                 const carto = map.camera?.positionCartographic;
                 const h = carto ? carto.height : 50000;
-                return Math.max(400, Math.min(40000, h * 0.045));
+                return Math.max(700, Math.min(60000, h * 0.07));
             } catch (_) {
-                return 3000;
+                return 5000;
             }
         }
 
@@ -2384,9 +2385,10 @@
                 fillColor: color || '#22d3ee',
                 fillOpacity: 1,
                 strokeColor: '#ffffff',
-                strokeWeight: 1.5,
+                strokeWeight: 1.6,
                 strokeOpacity: 1,
-                scale: isMe ? 1.95 : 1.6,
+                scale: isMe ? 2.55 : 2.15,
+                // Google: clockwise from north — як bearingDeg
                 rotation: Number.isFinite(heading) ? heading : 0,
                 anchor: new google.maps.Point(0, 0)
             };
@@ -2530,9 +2532,11 @@
             if (!Cartesian3) return;
             const Cesium = window.Cesium;
             let slot = flightMarkers[id];
-            const rotation = Cesium?.Math
+            // Cesium billboard.rotation з alignedAxis=UNIT_Z — проти годинника від півночі,
+            // а bearingDeg — за годинником, тому інвертуємо знак (інакше ніс/компас ідуть реверсно).
+            const rotation = -(Cesium?.Math
                 ? Cesium.Math.toRadians(heading)
-                : (heading * Math.PI / 180);
+                : (heading * Math.PI / 180));
             const planePos = Cartesian3.fromDegrees(pos.lon, pos.lat);
             const tipPos = Cartesian3.fromDegrees(tip.lon, tip.lat);
 
@@ -2542,8 +2546,8 @@
                     position: planePos,
                     billboard: {
                         image: planeBillboardImage(color),
-                        width: isMe ? 72 : 60,
-                        height: isMe ? 72 : 60,
+                        width: isMe ? 110 : 92,
+                        height: isMe ? 110 : 92,
                         rotation,
                         alignedAxis: Cesium?.Cartesian3?.UNIT_Z,
                         disableDepthTestDistance: Number.POSITIVE_INFINITY
