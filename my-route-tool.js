@@ -463,7 +463,229 @@
         };
     }
 
-    const FR_BUILD = 'attach-cursor-15';
+    const FR_BUILD = 'attach-track-16';
+
+    // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
+    const hostMarkerRegistry = new Set();
+    const hostAdvancedRegistry = new Set();
+
+    function markOwnOverlay(obj) {
+        try {
+            if (obj) obj.__frOwn = true;
+        } catch (_) { /* ignore */ }
+    }
+
+    function isOwnOverlay(obj) {
+        try {
+            return !!(obj && obj.__frOwn);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function wrapProtoMethod(proto, name, onCall) {
+        if (!proto) return;
+        const orig = proto[name];
+        if (typeof orig !== 'function' || orig.__frWrapped) return;
+        function wrapped(...args) {
+            try { onCall(this, args); } catch (_) { /* ignore */ }
+            return orig.apply(this, args);
+        }
+        wrapped.__frWrapped = true;
+        proto[name] = wrapped;
+    }
+
+    function installHostTrackSpy() {
+        if (!window.google?.maps?.Marker) return false;
+        if (window.__frHostTrackSpyInstalled) return true;
+        window.__frHostTrackSpyInstalled = true;
+
+        wrapProtoMethod(google.maps.Marker.prototype, 'setMap', (m) => {
+            if (m && !isOwnOverlay(m)) hostMarkerRegistry.add(m);
+        });
+        wrapProtoMethod(google.maps.Marker.prototype, 'setPosition', (m) => {
+            if (m && !isOwnOverlay(m)) hostMarkerRegistry.add(m);
+        });
+        wrapProtoMethod(google.maps.Marker.prototype, 'setIcon', (m) => {
+            if (m && !isOwnOverlay(m)) hostMarkerRegistry.add(m);
+        });
+
+        const AME = google.maps.marker?.AdvancedMarkerElement;
+        if (AME) {
+            const desc = Object.getOwnPropertyDescriptor(AME.prototype, 'position');
+            if (desc?.set && !desc.set.__frWrapped) {
+                const origSet = desc.set;
+                const wrappedSet = function (v) {
+                    try {
+                        if (this && !isOwnOverlay(this)) hostAdvancedRegistry.add(this);
+                    } catch (_) { /* ignore */ }
+                    return origSet.call(this, v);
+                };
+                wrappedSet.__frWrapped = true;
+                Object.defineProperty(AME.prototype, 'position', {
+                    ...desc,
+                    set: wrappedSet
+                });
+            }
+            wrapProtoMethod(AME.prototype, 'remove', (m) => {
+                try { hostAdvancedRegistry.delete(m); } catch (_) { /* ignore */ }
+            });
+        }
+
+        console.log('[FALCONROUTE] host-track spy: markers will be tracked for attach');
+        return true;
+    }
+
+    // Спроба рано, поки карта вже крутить треки
+    installHostTrackSpy();
+    const _spyTimer = setInterval(() => {
+        if (installHostTrackSpy()) clearInterval(_spyTimer);
+    }, 500);
+    setTimeout(() => clearInterval(_spyTimer), 60000);
+
+    function latLonFromGooglePos(pos) {
+        if (!pos) return null;
+        try {
+            if (typeof pos.lat === 'function') {
+                return { lat: pos.lat(), lon: pos.lng() };
+            }
+            if (Number.isFinite(pos.lat) && Number.isFinite(pos.lng)) {
+                return { lat: pos.lat, lon: pos.lng };
+            }
+            if (Number.isFinite(pos.latitude) && Number.isFinite(pos.longitude)) {
+                return { lat: pos.latitude, lon: pos.longitude };
+            }
+        } catch (_) { /* ignore */ }
+        return null;
+    }
+
+    function headingFromGoogleIcon(icon) {
+        if (!icon || typeof icon !== 'object') return null;
+        if (Number.isFinite(icon.rotation)) return ((icon.rotation % 360) + 360) % 360;
+        return null;
+    }
+
+    function looksLikeTrackArrow(marker) {
+        try {
+            const icon = marker.getIcon?.();
+            if (!icon) return true; // невідомо — дозволяємо обрати кліком
+            if (typeof icon === 'string') return true;
+            const path = icon.path;
+            if (path === google.maps.SymbolPath.FORWARD_CLOSED_ARROW) return true;
+            if (path === google.maps.SymbolPath.FORWARD_OPEN_ARROW) return true;
+            if (Number.isFinite(icon.rotation)) return true;
+            if (typeof path === 'string' && path.length > 8) return true;
+            return true;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    function readMarkerPose(marker) {
+        try {
+            if (!marker || isOwnOverlay(marker)) return null;
+            if (typeof marker.getMap === 'function' && marker.getMap() == null) return null;
+            const ll = latLonFromGooglePos(marker.getPosition?.());
+            if (!ll) return null;
+            const heading = headingFromGoogleIcon(marker.getIcon?.());
+            return { lat: ll.lat, lon: ll.lon, heading };
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function readAdvancedPose(el) {
+        try {
+            if (!el || isOwnOverlay(el)) return null;
+            if (el.map == null) return null;
+            const ll = latLonFromGooglePos(el.position);
+            if (!ll) return null;
+            return { lat: ll.lat, lon: ll.lon, heading: null };
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function collectHostTrackCandidates(mapInstance) {
+        const list = [];
+        hostMarkerRegistry.forEach((m) => {
+            if (isOwnOverlay(m)) return;
+            try {
+                if (mapInstance && typeof m.getMap === 'function' && m.getMap() !== mapInstance) return;
+            } catch (_) { return; }
+            const pose = readMarkerPose(m);
+            if (!pose) return;
+            if (!looksLikeTrackArrow(m)) return;
+            list.push({ kind: 'marker', obj: m, pose });
+        });
+        hostAdvancedRegistry.forEach((el) => {
+            if (isOwnOverlay(el)) return;
+            try {
+                if (mapInstance && el.map && el.map !== mapInstance) return;
+            } catch (_) { return; }
+            const pose = readAdvancedPose(el);
+            if (!pose) return;
+            list.push({ kind: 'advanced', obj: el, pose });
+        });
+        return list;
+    }
+
+    function findNearestHostTrack(mapInstance, lat, lon, maxM) {
+        const limit = Number.isFinite(maxM) ? maxM : 2500;
+        let best = null;
+        let bestD = limit;
+        collectHostTrackCandidates(mapInstance).forEach((c) => {
+            const d = haversineM(lat, lon, c.pose.lat, c.pose.lon);
+            if (d < bestD) {
+                bestD = d;
+                best = { ...c, distM: d };
+            }
+        });
+        return best;
+    }
+
+    function readHostTrackPose(track) {
+        if (!track) return null;
+        if (track.kind === 'marker') return readMarkerPose(track.obj);
+        if (track.kind === 'advanced') return readAdvancedPose(track.obj);
+        if (track.kind === 'cesium') {
+            try {
+                const Cesium = window.Cesium;
+                const entity = track.obj;
+                if (!entity || entity.__frOwn) return null;
+                const time = track.clock?.currentTime || Cesium?.JulianDate?.now?.();
+                let cartesian = null;
+                if (entity.position?.getValue && time) cartesian = entity.position.getValue(time);
+                else if (entity.position) cartesian = entity.position;
+                if (!cartesian || !Cesium) return null;
+                const carto = Cesium.Cartographic.fromCartesian(cartesian);
+                if (!carto) return null;
+                let heading = null;
+                const orient = entity.orientation?.getValue?.(time) || entity.orientation;
+                if (orient && Cesium.HeadingPitchRoll) {
+                    try {
+                        const hpr = Cesium.HeadingPitchRoll.fromQuaternion(orient);
+                        if (hpr) heading = (Cesium.Math.toDegrees(hpr.heading) + 360) % 360;
+                    } catch (_) { /* ignore */ }
+                }
+                const rot = entity.billboard?.rotation?.getValue?.(time) ?? entity.billboard?.rotation;
+                if (heading == null && Number.isFinite(rot)) {
+                    heading = ((90 - (rot * 180 / Math.PI)) + 360) % 360;
+                }
+                return {
+                    lat: carto.latitude * 57.29577951308232,
+                    lon: carto.longitude * 57.29577951308232,
+                    heading
+                };
+            } catch (_) {
+                return null;
+            }
+        }
+        if (track.kind === 'getter' && typeof track.getPose === 'function') {
+            try { return track.getPose(); } catch (_) { return null; }
+        }
+        return null;
+    }
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -651,6 +873,8 @@
         let isPlaceAircraftMode = false;
         let isFlyToMode = false;
         let isPlaneAttached = false;
+        let isAttachPickMode = false;
+        let attachedHostTrack = null;
         let isDraggingHeading = false;
         let isDraggingPlane = false;
         let headingDragTip = null;
@@ -663,7 +887,7 @@
         let rangeTrack = null;
         let placeAircraftListener = null;
         let flyToListener = null;
-        let attachMoveListener = null;
+        let attachPickListener = null;
         let cesiumHeadingHandler = null;
         let applyRemote = false;
         let pickListener = null;
@@ -671,6 +895,30 @@
         let corridorListener = null;
         let rulerListener = null;
         let draftCorridor = [];
+
+        installHostTrackSpy();
+        window.__FR_hostTracks = () => {
+            try {
+                if (mapType === 'google') {
+                    return collectHostTrackCandidates(map).map((c) => ({
+                        kind: c.kind,
+                        lat: c.pose.lat,
+                        lon: c.pose.lon,
+                        heading: c.pose.heading,
+                        title: c.obj?.getTitle?.() || c.obj?.title || null
+                    }));
+                }
+                return (map.entities?.values || [])
+                    .filter((e) => e && !e.__frOwn)
+                    .map((e) => {
+                        const pose = readHostTrackPose({ kind: 'cesium', obj: e, clock: map.clock });
+                        return pose ? { kind: 'cesium', ...pose } : null;
+                    })
+                    .filter(Boolean);
+            } catch (err) {
+                return { error: String(err) };
+            }
+        };
 
         const Cartesian3 = mapType === 'cesium'
             ? map.camera.position.constructor
@@ -853,7 +1101,7 @@
 
                 <div class="fr-section">
                     <span class="fr-label">Борт (окремо від лінійки; швидкість спільна)</span>
-                    <div class="fr-label" style="color:#94a3b8;font-size:10px;line-height:1.35">«Летіти» — рух за курсом без цілі. «Прикріпити» — борт їде за стрілкою миші на карті; «Відкріпити» — лишається на місці.</div>
+                    <div class="fr-label" style="color:#94a3b8;font-size:10px;line-height:1.35">«Летіти» — рух за курсом без цілі. «Прикріпити до треку» — наш борт слідує за стрілкою треку на самій карті (не FalconRoute).</div>
                     <div class="fr-row">
                         <label>Позивний:</label>
                         <input type="text" id="fr-callsign" value="${settings.callsign || 'Falcon'}" maxlength="16" placeholder="Falcon">
@@ -866,7 +1114,7 @@
                         <button class="fr-btn fr-btn-pick" id="fr-flight-place">📍 Поставити</button>
                         <button class="fr-btn fr-btn-ok" id="fr-flight-goto">✈ Летіти</button>
                     </div>
-                    <button class="fr-btn fr-btn-wide" id="fr-flight-attach">🔗 Прикріпити до стрілки</button>
+                    <button class="fr-btn fr-btn-wide" id="fr-flight-attach">🔗 Прикріпити до треку</button>
                     <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-flight-stop">⏹ Прибрати борт</button>
                     <div class="fr-label" id="fr-flight-status">Борт не виставлено</div>
                     <div class="fr-row">
@@ -2449,34 +2697,36 @@
             if (!btn) return;
             if (isPlaneAttached) {
                 btn.classList.add('active');
-                btn.textContent = '🔓 Відкріпити від стрілки';
+                btn.textContent = '🔓 Відкріпити від треку';
+            } else if (isAttachPickMode) {
+                btn.classList.add('active');
+                btn.textContent = '👆 Клацни стрілку треку…';
             } else {
                 btn.classList.remove('active');
-                btn.textContent = '🔗 Прикріпити до стрілки';
+                btn.textContent = '🔗 Прикріпити до треку';
             }
         }
 
-        function clearAttachListeners() {
-            if (attachMoveListener) {
+        function clearAttachPickListener() {
+            if (attachPickListener) {
                 if (mapType === 'google') {
-                    google.maps.event.removeListener(attachMoveListener);
+                    google.maps.event.removeListener(attachPickListener);
                 } else if (map.canvas) {
-                    map.canvas.removeEventListener('mousemove', attachMoveListener);
-                    map.canvas.removeEventListener('pointermove', attachMoveListener);
+                    map.canvas.removeEventListener('click', attachPickListener);
                 }
-                attachMoveListener = null;
+                attachPickListener = null;
             }
+            isAttachPickMode = false;
         }
 
-        function detachPlaneFromCursor(silent) {
-            if (!isPlaneAttached) {
-                updateAttachBtn();
-                return;
-            }
+        function detachFromHostTrack(silent) {
+            clearAttachPickListener();
+            const was = isPlaneAttached;
             isPlaneAttached = false;
-            clearAttachListeners();
+            attachedHostTrack = null;
             attachLastPos = null;
             updateAttachBtn();
+            if (!was) return;
             if (!silent && myFlight?.active) {
                 const cur = resolveFlightPos(myFlight) || myFlight;
                 myFlight.lat = cur.lat;
@@ -2485,28 +2735,30 @@
                 myFlight.to = null;
                 myFlight.updatedAt = Date.now();
                 setFlightStatus(
-                    `${myFlight.callsign}: відкріплено · курс ${Math.round(myFlight.heading || 0)}°`
+                    `${myFlight.callsign}: відкріплено від треку · курс ${Math.round(myFlight.heading || 0)}°`
                 );
                 pushMyFlight();
             }
         }
 
-        function applyAttachPos(lat, lon) {
-            if (!myFlight?.active || !isPlaneAttached) return;
-            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-            if (isDraggingHeading) return;
+        function applyHostTrackPose(pose) {
+            if (!myFlight?.active || !isPlaneAttached || !pose) return;
+            if (!Number.isFinite(pose.lat) || !Number.isFinite(pose.lon)) return;
+            if (isDraggingHeading || isDraggingPlane) return;
 
             const prev = attachLastPos;
-            if (prev) {
-                const moved = haversineM(prev.lat, prev.lon, lat, lon);
-                if (moved >= 8) {
-                    myFlight.heading = bearingDeg(prev, { lat, lon });
-                }
+            let heading = Number.isFinite(pose.heading) ? pose.heading : null;
+            if (heading == null && prev) {
+                const moved = haversineM(prev.lat, prev.lon, pose.lat, pose.lon);
+                if (moved >= 5) heading = bearingDeg(prev, pose);
             }
-            attachLastPos = { lat, lon };
-            myFlight.lat = lat;
-            myFlight.lon = lon;
-            myFlight.from = { lat, lon };
+            if (heading == null) heading = myFlight.heading || 0;
+
+            attachLastPos = { lat: pose.lat, lon: pose.lon };
+            myFlight.lat = pose.lat;
+            myFlight.lon = pose.lon;
+            myFlight.heading = heading;
+            myFlight.from = { lat: pose.lat, lon: pose.lon };
             myFlight.to = null;
             myFlight.cruise = false;
             myFlight.startedAt = null;
@@ -2514,67 +2766,170 @@
             myFlight.speedKmh = getRulerSpeed();
             updateCruiseBtn();
             upsertFlightMarker(CLIENT_ID, myFlight, {
-                lat,
-                lon,
-                heading: myFlight.heading || 0
+                lat: pose.lat,
+                lon: pose.lon,
+                heading
             });
             setFlightStatus(
-                `${myFlight.callsign}: прикріплено до стрілки · курс ${Math.round(myFlight.heading || 0)}°`
+                `${myFlight.callsign}: на треку карти · курс ${Math.round(heading)}°`
             );
         }
 
-        function attachPlaneToCursor() {
+        function syncAttachedHostTrack() {
+            if (!isPlaneAttached || !attachedHostTrack) return;
+            const pose = readHostTrackPose(attachedHostTrack);
+            if (!pose) {
+                setFlightStatus(`${myFlight?.callsign || 'Борт'}: трек зник з карти — відкріплено`);
+                detachFromHostTrack(true);
+                return;
+            }
+            applyHostTrackPose(pose);
+        }
+
+        function bindToHostTrack(track) {
+            if (!track || !myFlight?.active) return false;
+            clearAttachPickListener();
+            isPlaneAttached = true;
+            attachedHostTrack = track;
+            myFlight.cruise = false;
+            myFlight.to = null;
+            myFlight.startedAt = null;
+            updateAttachBtn();
+            updateCruiseBtn();
+            const pose = readHostTrackPose(track);
+            if (pose) applyHostTrackPose(pose);
+            else {
+                setFlightStatus(`${myFlight.callsign}: прикріплено, чекаю оновлення треку…`);
+            }
+            pushMyFlight();
+            ensurePushTimer();
+            startFlightLoop();
+            return true;
+        }
+
+        function pickHostTrackAt(lat, lon) {
+            installHostTrackSpy();
+            if (mapType === 'google') {
+                const hit = findNearestHostTrack(map, lat, lon, 3000);
+                if (hit) return hit;
+                // Якщо spy ще не зловив — підкажемо
+                const n = collectHostTrackCandidates(map).length;
+                console.warn('[FALCONROUTE] host tracks visible to spy:', n);
+                return null;
+            }
+            // Cesium: pick entity under click
+            try {
+                const Cesium = window.Cesium;
+                if (!Cesium || !map?.scene) return null;
+                // lat/lon already from click — find nearest moving-looking entity
+                let best = null;
+                let bestD = 3000;
+                const entities = map.entities?.values || [];
+                for (const ent of entities) {
+                    if (!ent || ent.__frOwn) continue;
+                    const track = { kind: 'cesium', obj: ent, clock: map.clock };
+                    const pose = readHostTrackPose(track);
+                    if (!pose) continue;
+                    const d = haversineM(lat, lon, pose.lat, pose.lon);
+                    if (d < bestD) {
+                        bestD = d;
+                        best = track;
+                    }
+                }
+                return best;
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function beginAttachToHostTrack() {
             if (isPickMode) stopPickMode();
             if (isCoordPickMode) stopCoordPickMode();
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
             stopAircraftModes();
 
-            if (!myFlight?.active) {
-                alert('Спочатку постав борт кнопкою «Поставити», потім прикріпи до стрілки.');
+            if (isPlaneAttached) {
+                detachFromHostTrack(false);
+                return;
+            }
+            if (isAttachPickMode) {
+                clearAttachPickListener();
+                updateAttachBtn();
+                setFlightStatus(myFlight?.active ? `${myFlight.callsign}: на позиції` : 'Борт не виставлено');
                 return;
             }
 
-            isPlaneAttached = true;
-            myFlight.cruise = false;
-            myFlight.to = null;
-            myFlight.startedAt = null;
-            const cur = resolveFlightPos(myFlight) || myFlight;
-            attachLastPos = { lat: cur.lat, lon: cur.lon };
-            myFlight.lat = cur.lat;
-            myFlight.lon = cur.lon;
-            myFlight.from = { lat: cur.lat, lon: cur.lon };
-            myFlight.updatedAt = Date.now();
-            updateAttachBtn();
-            updateCruiseBtn();
-            setFlightStatus(`${myFlight.callsign}: прикріплено — води стрілкою по карті`);
-            pushMyFlight();
-            ensurePushTimer();
-            startFlightLoop();
+            if (!myFlight?.active) {
+                alert('Спочатку постав борт («Поставити»), потім прикріпи до треку на карті.');
+                return;
+            }
 
-            clearAttachListeners();
+            installHostTrackSpy();
+            isAttachPickMode = true;
+            updateAttachBtn();
+            setFlightStatus('Клацни стрілку/трек на карті (рухомий обʼєкт самої карти)');
+
+            const onPick = (lat, lon, directTrack) => {
+                const track = directTrack || pickHostTrackAt(lat, lon);
+                if (!track) {
+                    setFlightStatus(
+                        'Трек не знайдено поруч. Клацни ближче до стрілки, коли вона рухається на карті.'
+                    );
+                    alert(
+                        'Не знайшов стрілку треку карти поруч із кліком.\n\n' +
+                        'Підказка: стрілка має бути маркером Google Maps / Cesium entity.\n' +
+                        'Клацни прямо по ній (коли вона вже зʼявилась і рухається).\n' +
+                        'Діагностика: у консолі __FR_hostTracks()'
+                    );
+                    return;
+                }
+                bindToHostTrack(track);
+            };
+
+            // Прямий клік по маркеру хоста (map click часто не стріляє, якщо влучив у Marker)
+            const wired = new WeakSet();
+            const wireHostClicks = () => {
+                if (!isAttachPickMode) return;
+                collectHostTrackCandidates(map).forEach((c) => {
+                    if (c.kind !== 'marker' || wired.has(c.obj)) return;
+                    wired.add(c.obj);
+                    try {
+                        c.obj.addListener('click', () => {
+                            if (!isAttachPickMode) return;
+                            const pose = readMarkerPose(c.obj);
+                            if (pose) onPick(pose.lat, pose.lon, { kind: 'marker', obj: c.obj });
+                        });
+                    } catch (_) { /* ignore */ }
+                });
+            };
+            wireHostClicks();
+            const wireTimer = setInterval(() => {
+                if (!isAttachPickMode) {
+                    clearInterval(wireTimer);
+                    return;
+                }
+                wireHostClicks();
+            }, 500);
+
             if (mapType === 'google') {
-                attachMoveListener = map.addListener('mousemove', (e) => {
-                    if (!isPlaneAttached || !e?.latLng) return;
-                    // Не чіпати борт, коли курсор над панеллю FalconRoute
-                    if (e.domEvent?.target?.closest?.('#falcon-route-ui')) return;
-                    applyAttachPos(e.latLng.lat(), e.latLng.lng());
+                attachPickListener = map.addListener('click', (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
                 });
             } else if (map.canvas) {
-                attachMoveListener = (e) => {
-                    if (!isPlaneAttached) return;
-                    if (e.target?.closest?.('#falcon-route-ui')) return;
+                attachPickListener = (e) => {
                     const ll = mapClickLatLon(e);
-                    if (ll) applyAttachPos(ll.lat, ll.lon);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
                 };
-                map.canvas.addEventListener('mousemove', attachMoveListener);
-                map.canvas.addEventListener('pointermove', attachMoveListener);
+                map.canvas.addEventListener('click', attachPickListener);
             }
         }
 
         function togglePlaneAttach() {
-            if (isPlaneAttached) detachPlaneFromCursor(false);
-            else attachPlaneToCursor();
+            beginAttachToHostTrack();
         }
 
         function destroyCesiumHeadingDrag() {
@@ -2869,6 +3224,8 @@
                         draggable: isMe,
                         cursor: isMe ? 'grab' : undefined
                     });
+                    markOwnOverlay(marker);
+                    try { hostMarkerRegistry.delete(marker); } catch (_) { /* ignore */ }
                     const labelOv = createFlightCallsignOverlay(
                         new google.maps.LatLng(pos.lat, pos.lon),
                         labelText,
@@ -2967,6 +3324,7 @@
                         disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
                 });
+                markOwnOverlay(entity);
                 const labelEnt = map.entities.add({
                     position: planePos,
                     label: {
@@ -2983,6 +3341,7 @@
                         disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
                 });
+                markOwnOverlay(labelEnt);
                 // Довга лінія курсу на карті (не в SVG) — CallbackProperty, без перезапису material
                 const headingLine = map.entities.add({
                     polyline: {
@@ -2993,6 +3352,7 @@
                         material: toCesiumColor('#fbbf24')
                     }
                 });
+                markOwnOverlay(headingLine);
                 let headingHit = null;
                 if (isMe) {
                     headingHit = map.entities.add({
@@ -3004,6 +3364,7 @@
                             material: toCesiumColor({ red: 0.98, green: 0.75, blue: 0.14, alpha: 0.08 })
                         }
                     });
+                    markOwnOverlay(headingHit);
                     ensureCesiumHeadingDrag();
                 }
                 flightMarkers[id] = {
@@ -3305,13 +3666,18 @@
 
             if (myFlight?.active) {
                 if (isPlaneAttached) {
-                    myPos = { lat: myFlight.lat, lon: myFlight.lon };
-                    upsertFlightMarker(CLIENT_ID, myFlight, {
-                        lat: myFlight.lat,
-                        lon: myFlight.lon,
-                        heading: myFlight.heading || 0
-                    });
-                    activeIds.add(CLIENT_ID);
+                    syncAttachedHostTrack();
+                    myPos = myFlight?.active
+                        ? { lat: myFlight.lat, lon: myFlight.lon }
+                        : null;
+                    if (myFlight?.active) {
+                        upsertFlightMarker(CLIENT_ID, myFlight, {
+                            lat: myFlight.lat,
+                            lon: myFlight.lon,
+                            heading: myFlight.heading || 0
+                        });
+                        activeIds.add(CLIENT_ID);
+                    }
                 } else if (isDraggingPlane && planeDragPos) {
                     myPos = { lat: planeDragPos.lat, lon: planeDragPos.lon };
                     upsertFlightMarker(CLIENT_ID, myFlight, {
@@ -3460,7 +3826,7 @@
                 return;
             }
             if (isPlaneAttached) {
-                detachPlaneFromCursor(true);
+                detachFromHostTrack(true);
                 setFlightStatus(`${myFlight.callsign}: відкріплено для польоту`);
             }
             const cur = resolveFlightPos(myFlight) || myFlight;
@@ -3492,7 +3858,7 @@
         }
 
         function removeMyAircraft() {
-            detachPlaneFromCursor(true);
+            detachFromHostTrack(true);
             stopAircraftModes();
             myFlight = null;
             if (flightPushTimer) {
@@ -3533,7 +3899,11 @@
             if (isCoordPickMode) stopCoordPickMode();
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
-            if (isPlaneAttached) detachPlaneFromCursor(true);
+            if (isPlaneAttached) detachFromHostTrack(true);
+            if (isAttachPickMode) {
+                clearAttachPickListener();
+                updateAttachBtn();
+            }
             if (isPlaceAircraftMode) {
                 stopAircraftModes();
                 setFlightStatus(myFlight?.active ? `${myFlight.callsign}: на позиції` : 'Борт не виставлено');

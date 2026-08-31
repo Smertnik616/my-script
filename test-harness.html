@@ -126,6 +126,41 @@
       });
       window.map = map;
       window.googleMap = map;
+
+      // Демо-трек карти (червона стрілка) — імітує рухомий борт хоста для «Прикріпити до треку»
+      const hostIcon = () => ({
+        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+        scale: 6,
+        rotation: 40,
+        fillColor: '#ef4444',
+        fillOpacity: 0.95,
+        strokeColor: '#ffffff',
+        strokeWeight: 1.5,
+        anchor: new google.maps.Point(0, 2)
+      });
+      const hostTrack = new google.maps.Marker({
+        map,
+        position: { lat: 50.50, lng: 30.60 },
+        icon: hostIcon(),
+        title: 'HOST TRACK (demo)',
+        zIndex: 50
+      });
+      window.__demoHostTrack = hostTrack;
+      let hostT = 0;
+      setInterval(() => {
+        hostT += 0.035;
+        const lat = 50.50 + Math.sin(hostT) * 0.18;
+        const lng = 30.60 + Math.cos(hostT) * 0.22;
+        const heading = (Math.atan2(
+          Math.cos(hostT + 0.035) - Math.cos(hostT),
+          Math.sin(hostT + 0.035) - Math.sin(hostT)
+        ) * 180 / Math.PI + 360) % 360;
+        const icon = hostIcon();
+        icon.rotation = heading;
+        hostTrack.setIcon(icon);
+        hostTrack.setPosition({ lat, lng });
+      }, 250);
+
       return map;
     }
 
