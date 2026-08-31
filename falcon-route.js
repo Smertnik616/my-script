@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'plane-sm-11';
+    const FR_BUILD = 'plane-sm-12';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -486,17 +486,16 @@
     }
 
     function planeBillboardImage(color) {
-        const key = String(color || '#22d3ee').toLowerCase() + '|v5sm';
+        const key = String(color || '#22d3ee').toLowerCase() + '|v6sm70';
         if (planeBillboardCache[key]) return planeBillboardCache[key];
-        // Коротка риска на носі; довга лінія курсу — окрема polyline на карті
+        const fill = String(color || '#22d3ee').toLowerCase();
+        // Менший силует + ~70% непрозорості (на 30% прозоріший)
         const svg =
-            `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">` +
-            `<defs><filter id="s" x="-40%" y="-40%" width="180%" height="180%">` +
-            `<feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-color="#000" flood-opacity="0.5"/></filter></defs>` +
-            `<g transform="translate(48 48)" filter="url(#s)">` +
-            `<line x1="0" y1="-10" x2="0" y2="-26" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round"/>` +
-            `<g transform="scale(1.05)">` +
-            `<path d="${PLANE_SYMBOL_PATH}" fill="${String(color || '#22d3ee').toLowerCase()}" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/>` +
+            `<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">` +
+            `<g transform="translate(36 36)" opacity="0.7">` +
+            `<line x1="0" y1="-8" x2="0" y2="-20" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"/>` +
+            `<g transform="scale(0.78)">` +
+            `<path d="${PLANE_SYMBOL_PATH}" fill="${fill}" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>` +
             `</g></g></svg>`;
         planeBillboardCache[key] = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
         return planeBillboardCache[key];
@@ -2590,11 +2589,11 @@
             return {
                 path: PLANE_SYMBOL_PATH,
                 fillColor: color || '#22d3ee',
-                fillOpacity: 1,
+                fillOpacity: 0.7,
                 strokeColor: '#ffffff',
-                strokeWeight: 1.6,
-                strokeOpacity: 1,
-                scale: isMe ? 1.35 : 1.15,
+                strokeWeight: 1.2,
+                strokeOpacity: 0.7,
+                scale: isMe ? 0.95 : 0.8,
                 // Google: clockwise from north — як bearingDeg
                 rotation: Number.isFinite(heading) ? heading : 0,
                 anchor: new google.maps.Point(0, 0)
@@ -2797,10 +2796,11 @@
                     position: planePos,
                     billboard: {
                         image: planeBillboardImage(color),
-                        width: isMe ? 52 : 44,
-                        height: isMe ? 52 : 44,
+                        width: isMe ? 36 : 30,
+                        height: isMe ? 36 : 30,
                         rotation,
                         alignedAxis: Cesium?.Cartesian3?.UNIT_Z,
+                        color: toCesiumColor({ red: 1, green: 1, blue: 1, alpha: 0.7 }),
                         disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
                 });
