@@ -31,8 +31,32 @@
         zasibFilter: 'all',
         defaultAlt: 100,
         defaultRadius: 300,
-        corridorWidth: 2000
+        corridorWidth: 2000,
+        rulerSpeedKmh: 5
     };
+
+    function formatDistanceKm(meters) {
+        const km = meters / 1000;
+        if (km < 1) return `${Math.round(meters)} м`;
+        if (km < 10) return `${km.toFixed(2)} км`;
+        return `${km.toFixed(1)} км`;
+    }
+
+    function formatTravelTime(meters, speedKmh) {
+        const speed = Number(speedKmh);
+        if (!Number.isFinite(speed) || speed <= 0) return '—';
+        const hours = (meters / 1000) / speed;
+        if (!Number.isFinite(hours) || hours < 0) return '—';
+        const totalMin = Math.round(hours * 60);
+        if (totalMin < 1) return '<1 хв';
+        if (totalMin < 60) return `${totalMin} хв`;
+        const d = Math.floor(totalMin / (60 * 24));
+        const h = Math.floor((totalMin % (60 * 24)) / 60);
+        const m = totalMin % 60;
+        if (d > 0) return `${d} д ${h} год ${m} хв`;
+        if (m === 0) return `${h} год`;
+        return `${h} год ${m} хв`;
+    }
 
     // ---------- Детектор Google Maps (Phoenix / R2D2) ----------
     function isGoogleMap(obj) {
@@ -467,14 +491,18 @@
         // Коридор лише на цей запуск скрипта — не відновлюємо з минулого разу
         try { localStorage.removeItem(CORRIDOR_KEY); } catch (_) { /* ignore */ }
         let corridor = [];
+        let rulerPoints = []; // лише на цей запуск
         let overlayObjects = [];
         let labelOverlays = [];
         let corridorOverlays = [];
+        let rulerOverlays = [];
         let isPickMode = false;
         let isCorridorMode = false;
+        let isRulerMode = false;
         let applyRemote = false;
         let pickListener = null;
         let corridorListener = null;
+        let rulerListener = null;
         let draftCorridor = [];
 
         const Cartesian3 = mapType === 'cesium'
@@ -555,6 +583,9 @@
                 #falcon-route-ui details.fr-details > summary::-webkit-details-marker { display: none; }
                 .fr-map-label { position: absolute; transform: translate(-50%, calc(-100% - 14px)); pointer-events: none; white-space: nowrap; text-align: center; z-index: 1; }
                 .fr-map-label .fr-means-tag { background: rgba(15,16,21,.92); color: #fde68a; font: bold 10px/1.2 system-ui; padding: 2px 5px; border-radius: 3px; border: 1px solid rgba(253,230,138,.45); max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+                .fr-ruler-label { position: absolute; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap; z-index: 2; }
+                .fr-ruler-label .fr-ruler-chip { background: rgba(8,47,73,.92); color: #e0f2fe; font: bold 10px/1.25 system-ui; padding: 3px 6px; border-radius: 4px; border: 1px solid #38bdf8; box-shadow: 0 2px 8px rgba(0,0,0,.45); }
+                #falcon-route-ui .fr-ruler-total { color: #7dd3fc; font-size: 11px; font-weight: bold; line-height: 1.35; }
             </style>
             <div class="fr-head" id="fr-drag">
                 <span>🦅 FALCONROUTE v2 (Збиття)</span>
@@ -616,6 +647,19 @@
                         <button class="fr-btn fr-btn-danger" id="fr-corridor-clear">Скинути коридор</button>
                     </div>
                     <span class="fr-label" id="fr-corridor-status">Коридор не задано (лише на цей запуск)</span>
+                </div>
+
+                <div class="fr-section">
+                    <span class="fr-label">Лінійка (відстань / час)</span>
+                    <div class="fr-row">
+                        <label>Швидкість (км/год):</label>
+                        <input type="number" id="fr-ruler-speed" value="${settings.rulerSpeedKmh || 5}" step="0.5" min="0.1">
+                    </div>
+                    <div class="fr-grid">
+                        <button class="fr-btn fr-btn-pick" id="fr-ruler">📏 Лінійка</button>
+                        <button class="fr-btn fr-btn-danger" id="fr-ruler-clear">Скинути лінійку</button>
+                    </div>
+                    <div class="fr-ruler-total" id="fr-ruler-status">Лінійка не задана (лише на цей запуск)</div>
                 </div>
 
                 <div class="fr-section">
@@ -714,6 +758,7 @@
             settings.defaultAlt = parseFloat(document.getElementById('fr-alt').value) || 0;
             settings.defaultRadius = parseFloat(document.getElementById('fr-default-rad').value) || 300;
             settings.corridorWidth = parseFloat(document.getElementById('fr-corridor-w').value) || 2000;
+            settings.rulerSpeedKmh = parseFloat(document.getElementById('fr-ruler-speed').value) || 5;
             settings.showPoints = document.getElementById('fr-show-points').checked;
             settings.coordFormat = document.getElementById('fr-coord-format').value;
             settings.timeFilter = document.getElementById('fr-time-filter').value;
@@ -1075,6 +1120,191 @@
             corridorOverlays = [];
         }
 
+        function clearRulerOverlays() {
+            if (mapType === 'google') {
+                rulerOverlays.forEach(obj => {
+                    try { obj.setMap(null); } catch (_) { /* ignore */ }
+                });
+            } else {
+                rulerOverlays.forEach(ent => {
+                    try { map.entities.remove(ent); } catch (_) { /* ignore */ }
+                });
+            }
+            rulerOverlays = [];
+        }
+
+        function getRulerSpeed() {
+            const v = parseFloat(document.getElementById('fr-ruler-speed')?.value);
+            return Number.isFinite(v) && v > 0 ? v : (settings.rulerSpeedKmh || 5);
+        }
+
+        function rulerTotals(points) {
+            let totalM = 0;
+            for (let i = 0; i < points.length - 1; i++) {
+                totalM += haversineM(points[i].lat, points[i].lon, points[i + 1].lat, points[i + 1].lon);
+            }
+            return totalM;
+        }
+
+        function createGoogleRulerLabel(position, text) {
+            class FrRulerLabel extends google.maps.OverlayView {
+                constructor() {
+                    super();
+                    this.position = position;
+                    this.div = null;
+                }
+                onAdd() {
+                    this.div = document.createElement('div');
+                    this.div.className = 'fr-ruler-label';
+                    const chip = document.createElement('div');
+                    chip.className = 'fr-ruler-chip';
+                    chip.textContent = text;
+                    this.div.appendChild(chip);
+                    this.getPanes().floatPane.appendChild(this.div);
+                }
+                draw() {
+                    const proj = this.getProjection();
+                    if (!proj || !this.div) return;
+                    const p = proj.fromLatLngToDivPixel(this.position);
+                    if (!p) return;
+                    this.div.style.left = p.x + 'px';
+                    this.div.style.top = p.y + 'px';
+                }
+                onRemove() {
+                    if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
+                    this.div = null;
+                }
+            }
+            const ov = new FrRulerLabel();
+            ov.setMap(map);
+            return ov;
+        }
+
+        function renderRuler() {
+            clearRulerOverlays();
+            const status = document.getElementById('fr-ruler-status');
+            const speed = getRulerSpeed();
+            const pts = rulerPoints;
+
+            if (!pts.length) {
+                status.textContent = isRulerMode
+                    ? 'Лінійка: клацай точки на карті…'
+                    : 'Лінійка не задана (лише на цей запуск)';
+                return;
+            }
+
+            const totalM = rulerTotals(pts);
+            status.innerHTML = pts.length < 2
+                ? `Точок: ${pts.length} · додай ще точку`
+                : `Разом: <b>${formatDistanceKm(totalM)}</b> · ${formatTravelTime(totalM, speed)} при ${speed} км/год · точок: ${pts.length}`;
+
+            if (mapType === 'google') {
+                if (pts.length >= 2) {
+                    const poly = new google.maps.Polyline({
+                        path: pts.map(p => ({ lat: p.lat, lng: p.lon })),
+                        geodesic: true,
+                        strokeColor: '#22d3ee',
+                        strokeOpacity: 0.95,
+                        strokeWeight: 3,
+                        map,
+                        zIndex: 160
+                    });
+                    rulerOverlays.push(poly);
+                }
+
+                pts.forEach((p, idx) => {
+                    const m = new google.maps.Marker({
+                        position: { lat: p.lat, lng: p.lon },
+                        map,
+                        label: {
+                            text: String(idx + 1),
+                            color: '#082f49',
+                            fontSize: '10px',
+                            fontWeight: 'bold'
+                        },
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 8,
+                            fillColor: '#22d3ee',
+                            fillOpacity: 1,
+                            strokeColor: '#fff',
+                            strokeWeight: 1.5,
+                            labelOrigin: new google.maps.Point(0, 0)
+                        },
+                        zIndex: 161
+                    });
+                    rulerOverlays.push(m);
+                });
+
+                for (let i = 0; i < pts.length - 1; i++) {
+                    const a = pts[i];
+                    const b = pts[i + 1];
+                    const segM = haversineM(a.lat, a.lon, b.lat, b.lon);
+                    const mid = new google.maps.LatLng((a.lat + b.lat) / 2, (a.lon + b.lon) / 2);
+                    const text = `${formatDistanceKm(segM)} · ${formatTravelTime(segM, speed)}`;
+                    rulerOverlays.push(createGoogleRulerLabel(mid, text));
+                }
+                return;
+            }
+
+            if (!Cartesian3) return;
+            if (pts.length >= 2) {
+                const positions = pts.map(p => Cartesian3.fromDegrees(p.lon, p.lat));
+                const entity = map.entities.add({
+                    polyline: {
+                        positions,
+                        width: 3,
+                        material: { red: 0.13, green: 0.83, blue: 0.93, alpha: 1 }
+                    }
+                });
+                rulerOverlays.push(entity);
+            }
+
+            pts.forEach((p, idx) => {
+                const ent = map.entities.add({
+                    position: Cartesian3.fromDegrees(p.lon, p.lat),
+                    point: {
+                        pixelSize: 12,
+                        color: { red: 0.13, green: 0.83, blue: 0.93, alpha: 1 },
+                        outlineColor: { red: 1, green: 1, blue: 1, alpha: 1 },
+                        outlineWidth: 2
+                    },
+                    label: {
+                        text: String(idx + 1),
+                        font: 'bold 11px sans-serif',
+                        fillColor: { red: 1, green: 1, blue: 1, alpha: 1 },
+                        outlineColor: { red: 0, green: 0, blue: 0, alpha: 1 },
+                        outlineWidth: 2,
+                        verticalOrigin: window.Cesium?.VerticalOrigin?.CENTER,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                });
+                rulerOverlays.push(ent);
+            });
+
+            for (let i = 0; i < pts.length - 1; i++) {
+                const a = pts[i];
+                const b = pts[i + 1];
+                const segM = haversineM(a.lat, a.lon, b.lat, b.lon);
+                const text = `${formatDistanceKm(segM)}\n${formatTravelTime(segM, speed)}`;
+                const midEnt = map.entities.add({
+                    position: Cartesian3.fromDegrees((a.lon + b.lon) / 2, (a.lat + b.lat) / 2),
+                    label: {
+                        text,
+                        font: 'bold 11px sans-serif',
+                        fillColor: { red: 0.88, green: 0.95, blue: 0.99, alpha: 1 },
+                        outlineColor: { red: 0, green: 0, blue: 0, alpha: 1 },
+                        outlineWidth: 3,
+                        showBackground: true,
+                        backgroundColor: { red: 0.03, green: 0.18, blue: 0.28, alpha: 0.9 },
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                });
+                rulerOverlays.push(midEnt);
+            }
+            map.scene?.requestRender?.();
+        }
+
         function createGoogleMeansOverlay(position, meansName) {
             if (!meansName) return null;
             class FrMeansLabel extends google.maps.OverlayView {
@@ -1405,6 +1635,30 @@
         function refreshUI() {
             renderList();
             renderMap();
+            renderRuler();
+        }
+
+        function stopRulerMode() {
+            isRulerMode = false;
+            const btn = document.getElementById('fr-ruler');
+            if (btn) {
+                btn.classList.remove('active');
+                btn.textContent = '📏 Лінійка';
+            }
+            if (rulerListener) {
+                if (mapType === 'google') {
+                    google.maps.event.removeListener(rulerListener);
+                } else if (map.canvas) {
+                    map.canvas.removeEventListener('click', rulerListener);
+                }
+                rulerListener = null;
+            }
+            renderRuler();
+        }
+
+        function addRulerPoint(lat, lon) {
+            rulerPoints.push({ lat, lon });
+            renderRuler();
         }
 
         function stopPickMode() {
@@ -1537,6 +1791,7 @@
         const pickBtn = document.getElementById('fr-pick');
         pickBtn.onclick = () => {
             if (isCorridorMode) stopCorridorMode(false);
+            if (isRulerMode) stopRulerMode();
             if (isPickMode) {
                 stopPickMode();
                 return;
@@ -1573,6 +1828,7 @@
         const corridorBtn = document.getElementById('fr-corridor');
         corridorBtn.onclick = () => {
             if (isPickMode) stopPickMode();
+            if (isRulerMode) stopRulerMode();
 
             if (isCorridorMode) {
                 stopCorridorMode(true);
@@ -1621,6 +1877,57 @@
             draftCorridor = [];
             saveCorridor([]);
         };
+
+        const rulerBtn = document.getElementById('fr-ruler');
+        rulerBtn.onclick = () => {
+            if (isPickMode) stopPickMode();
+            if (isCorridorMode) stopCorridorMode(false);
+
+            if (isRulerMode) {
+                stopRulerMode();
+                return;
+            }
+
+            isRulerMode = true;
+            rulerBtn.classList.add('active');
+            rulerBtn.textContent = '✓ Лінійка активна (клацай карту)';
+            renderRuler();
+
+            if (mapType === 'google') {
+                rulerListener = map.addListener('click', (e) => {
+                    if (!e?.latLng) return;
+                    addRulerPoint(e.latLng.lat(), e.latLng.lng());
+                });
+            } else {
+                rulerListener = (e) => {
+                    const rect = map.canvas.getBoundingClientRect();
+                    const clickPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                    const cartesian = map.camera.pickEllipsoid(clickPos, map.scene.globe.ellipsoid);
+                    if (cartesian) {
+                        const cartographic = map.scene.globe.ellipsoid.cartesianToCartographic(cartesian);
+                        addRulerPoint(
+                            cartographic.latitude * 57.29577951308232,
+                            cartographic.longitude * 57.29577951308232
+                        );
+                    }
+                };
+                map.canvas.addEventListener('click', rulerListener);
+            }
+        };
+
+        document.getElementById('fr-ruler-clear').onclick = () => {
+            if (isRulerMode) stopRulerMode();
+            rulerPoints = [];
+            renderRuler();
+        };
+
+        document.getElementById('fr-ruler-speed').addEventListener('change', () => {
+            saveSettings();
+            renderRuler();
+        });
+        document.getElementById('fr-ruler-speed').addEventListener('input', () => {
+            renderRuler();
+        });
 
         document.getElementById('fr-export').onclick = () => {
             const points = getVisiblePoints();
@@ -1729,7 +2036,7 @@
         refreshUI();
         listenToCloudUpdates();
         if (timestampsRepaired) pushToFirebase(poiStore);
-        console.log(`🦅 FALCONROUTE v2 завантажено! (${mapType === 'google' ? 'Google Maps / R2D2' : 'Cesium'}) — коридор/засоби/фільтри`);
+        console.log(`🦅 FALCONROUTE v2 завантажено! (${mapType === 'google' ? 'Google Maps / R2D2' : 'Cesium'}) — коридор/лінійка/фільтри`);
     }
 
     document.getElementById('falcon-route-ui')?.remove();

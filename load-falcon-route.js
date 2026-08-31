@@ -11,7 +11,7 @@
             const res = await fetch(url, { cache: 'no-store' });
             if (!res.ok) continue;
             const text = await res.text();
-            if (text.includes('FALCONROUTE v2') && text.includes('fr-corridor')) {
+            if (text.includes('FALCONROUTE v2') && text.includes('fr-corridor') && text.includes('fr-ruler')) {
                 code = text;
                 break;
             }
