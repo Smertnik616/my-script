@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'compass-own-14';
+    const FR_BUILD = 'attach-cursor-15';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -650,10 +650,12 @@
         let flightPushTimer = 0;
         let isPlaceAircraftMode = false;
         let isFlyToMode = false;
+        let isPlaneAttached = false;
         let isDraggingHeading = false;
         let isDraggingPlane = false;
         let headingDragTip = null;
         let planeDragPos = null;
+        let attachLastPos = null;
         let ignoreHeadingInputUntil = 0;
         let headingDocUpHandler = null;
         let rangeTargetId = '';
@@ -661,6 +663,7 @@
         let rangeTrack = null;
         let placeAircraftListener = null;
         let flyToListener = null;
+        let attachMoveListener = null;
         let cesiumHeadingHandler = null;
         let applyRemote = false;
         let pickListener = null;
@@ -850,7 +853,7 @@
 
                 <div class="fr-section">
                     <span class="fr-label">Борт (окремо від лінійки; швидкість спільна)</span>
-                    <div class="fr-label" style="color:#94a3b8;font-size:10px;line-height:1.35">«Летіти» — рух за курсом без цілі. Перетягування літака не зупиняє політ. Жовта лінія — змінити курс.</div>
+                    <div class="fr-label" style="color:#94a3b8;font-size:10px;line-height:1.35">«Летіти» — рух за курсом без цілі. «Прикріпити» — борт їде за стрілкою миші на карті; «Відкріпити» — лишається на місці.</div>
                     <div class="fr-row">
                         <label>Позивний:</label>
                         <input type="text" id="fr-callsign" value="${settings.callsign || 'Falcon'}" maxlength="16" placeholder="Falcon">
@@ -863,6 +866,7 @@
                         <button class="fr-btn fr-btn-pick" id="fr-flight-place">📍 Поставити</button>
                         <button class="fr-btn fr-btn-ok" id="fr-flight-goto">✈ Летіти</button>
                     </div>
+                    <button class="fr-btn fr-btn-wide" id="fr-flight-attach">🔗 Прикріпити до стрілки</button>
                     <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-flight-stop">⏹ Прибрати борт</button>
                     <div class="fr-label" id="fr-flight-status">Борт не виставлено</div>
                     <div class="fr-row">
@@ -2440,6 +2444,139 @@
             }
         }
 
+        function updateAttachBtn() {
+            const btn = document.getElementById('fr-flight-attach');
+            if (!btn) return;
+            if (isPlaneAttached) {
+                btn.classList.add('active');
+                btn.textContent = '🔓 Відкріпити від стрілки';
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = '🔗 Прикріпити до стрілки';
+            }
+        }
+
+        function clearAttachListeners() {
+            if (attachMoveListener) {
+                if (mapType === 'google') {
+                    google.maps.event.removeListener(attachMoveListener);
+                } else if (map.canvas) {
+                    map.canvas.removeEventListener('mousemove', attachMoveListener);
+                    map.canvas.removeEventListener('pointermove', attachMoveListener);
+                }
+                attachMoveListener = null;
+            }
+        }
+
+        function detachPlaneFromCursor(silent) {
+            if (!isPlaneAttached) {
+                updateAttachBtn();
+                return;
+            }
+            isPlaneAttached = false;
+            clearAttachListeners();
+            attachLastPos = null;
+            updateAttachBtn();
+            if (!silent && myFlight?.active) {
+                const cur = resolveFlightPos(myFlight) || myFlight;
+                myFlight.lat = cur.lat;
+                myFlight.lon = cur.lon;
+                myFlight.from = { lat: cur.lat, lon: cur.lon };
+                myFlight.to = null;
+                myFlight.updatedAt = Date.now();
+                setFlightStatus(
+                    `${myFlight.callsign}: відкріплено · курс ${Math.round(myFlight.heading || 0)}°`
+                );
+                pushMyFlight();
+            }
+        }
+
+        function applyAttachPos(lat, lon) {
+            if (!myFlight?.active || !isPlaneAttached) return;
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+            if (isDraggingHeading) return;
+
+            const prev = attachLastPos;
+            if (prev) {
+                const moved = haversineM(prev.lat, prev.lon, lat, lon);
+                if (moved >= 8) {
+                    myFlight.heading = bearingDeg(prev, { lat, lon });
+                }
+            }
+            attachLastPos = { lat, lon };
+            myFlight.lat = lat;
+            myFlight.lon = lon;
+            myFlight.from = { lat, lon };
+            myFlight.to = null;
+            myFlight.cruise = false;
+            myFlight.startedAt = null;
+            myFlight.updatedAt = Date.now();
+            myFlight.speedKmh = getRulerSpeed();
+            updateCruiseBtn();
+            upsertFlightMarker(CLIENT_ID, myFlight, {
+                lat,
+                lon,
+                heading: myFlight.heading || 0
+            });
+            setFlightStatus(
+                `${myFlight.callsign}: прикріплено до стрілки · курс ${Math.round(myFlight.heading || 0)}°`
+            );
+        }
+
+        function attachPlaneToCursor() {
+            if (isPickMode) stopPickMode();
+            if (isCoordPickMode) stopCoordPickMode();
+            if (isCorridorMode) stopCorridorMode(false);
+            if (isRulerMode) stopRulerMode();
+            stopAircraftModes();
+
+            if (!myFlight?.active) {
+                alert('Спочатку постав борт кнопкою «Поставити», потім прикріпи до стрілки.');
+                return;
+            }
+
+            isPlaneAttached = true;
+            myFlight.cruise = false;
+            myFlight.to = null;
+            myFlight.startedAt = null;
+            const cur = resolveFlightPos(myFlight) || myFlight;
+            attachLastPos = { lat: cur.lat, lon: cur.lon };
+            myFlight.lat = cur.lat;
+            myFlight.lon = cur.lon;
+            myFlight.from = { lat: cur.lat, lon: cur.lon };
+            myFlight.updatedAt = Date.now();
+            updateAttachBtn();
+            updateCruiseBtn();
+            setFlightStatus(`${myFlight.callsign}: прикріплено — води стрілкою по карті`);
+            pushMyFlight();
+            ensurePushTimer();
+            startFlightLoop();
+
+            clearAttachListeners();
+            if (mapType === 'google') {
+                attachMoveListener = map.addListener('mousemove', (e) => {
+                    if (!isPlaneAttached || !e?.latLng) return;
+                    // Не чіпати борт, коли курсор над панеллю FalconRoute
+                    if (e.domEvent?.target?.closest?.('#falcon-route-ui')) return;
+                    applyAttachPos(e.latLng.lat(), e.latLng.lng());
+                });
+            } else if (map.canvas) {
+                attachMoveListener = (e) => {
+                    if (!isPlaneAttached) return;
+                    if (e.target?.closest?.('#falcon-route-ui')) return;
+                    const ll = mapClickLatLon(e);
+                    if (ll) applyAttachPos(ll.lat, ll.lon);
+                };
+                map.canvas.addEventListener('mousemove', attachMoveListener);
+                map.canvas.addEventListener('pointermove', attachMoveListener);
+            }
+        }
+
+        function togglePlaneAttach() {
+            if (isPlaneAttached) detachPlaneFromCursor(false);
+            else attachPlaneToCursor();
+        }
+
         function destroyCesiumHeadingDrag() {
             if (cesiumHeadingHandler) {
                 try { cesiumHeadingHandler.destroy(); } catch (_) { /* ignore */ }
@@ -3167,7 +3304,15 @@
             let myPos = null;
 
             if (myFlight?.active) {
-                if (isDraggingPlane && planeDragPos) {
+                if (isPlaneAttached) {
+                    myPos = { lat: myFlight.lat, lon: myFlight.lon };
+                    upsertFlightMarker(CLIENT_ID, myFlight, {
+                        lat: myFlight.lat,
+                        lon: myFlight.lon,
+                        heading: myFlight.heading || 0
+                    });
+                    activeIds.add(CLIENT_ID);
+                } else if (isDraggingPlane && planeDragPos) {
                     myPos = { lat: planeDragPos.lat, lon: planeDragPos.lon };
                     upsertFlightMarker(CLIENT_ID, myFlight, {
                         lat: planeDragPos.lat,
@@ -3314,6 +3459,10 @@
                 alert('Спочатку постав борт кнопкою «Поставити».');
                 return;
             }
+            if (isPlaneAttached) {
+                detachPlaneFromCursor(true);
+                setFlightStatus(`${myFlight.callsign}: відкріплено для польоту`);
+            }
             const cur = resolveFlightPos(myFlight) || myFlight;
             myFlight.lat = cur.lat;
             myFlight.lon = cur.lon;
@@ -3343,6 +3492,7 @@
         }
 
         function removeMyAircraft() {
+            detachPlaneFromCursor(true);
             stopAircraftModes();
             myFlight = null;
             if (flightPushTimer) {
@@ -3383,6 +3533,7 @@
             if (isCoordPickMode) stopCoordPickMode();
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
+            if (isPlaneAttached) detachPlaneFromCursor(true);
             if (isPlaceAircraftMode) {
                 stopAircraftModes();
                 setFlightStatus(myFlight?.active ? `${myFlight.callsign}: на позиції` : 'Борт не виставлено');
@@ -3451,7 +3602,9 @@
 
         document.getElementById('fr-flight-place').onclick = () => beginPlaceAircraft();
         document.getElementById('fr-flight-goto').onclick = () => toggleCruise();
+        document.getElementById('fr-flight-attach').onclick = () => togglePlaneAttach();
         document.getElementById('fr-flight-stop').onclick = () => removeMyAircraft();
+        updateAttachBtn();
         document.getElementById('fr-range-target').addEventListener('change', (e) => {
             rangeTargetId = e.target.value || '';
         });
