@@ -2632,22 +2632,6 @@
                 pushMyFlight();
             }
         });
-        document.getElementById('fr-ruler-speed').addEventListener('change', () => {
-            if (myFlight) {
-                myFlight.speedKmh = getRulerSpeed();
-                // якщо вже летить — перезапустити ногу з поточної позиції з новою швидкістю
-                if (myFlight.to) {
-                    const cur = resolveFlightPos(myFlight);
-                    if (cur) {
-                        myFlight.from = { lat: cur.lat, lon: cur.lon };
-                        myFlight.lat = cur.lat;
-                        myFlight.lon = cur.lon;
-                        myFlight.startedAt = Date.now();
-                    }
-                }
-                pushMyFlight();
-            }
-        });
 
         window.addEventListener('beforeunload', () => {
             if (!myFlight) return;
