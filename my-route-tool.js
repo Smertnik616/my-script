@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'ui-polish-17';
+    const FR_BUILD = 'quickbar-18';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1039,8 +1039,41 @@
                 #falcon-route-ui .fr-btn-primary:hover { background: #38bdf8; color: #082f49; }
 
                 #falcon-route-ui .fr-quick {
-                    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+                    display: flex; flex-direction: column; gap: 6px;
                     padding: 8px; background: #171b26; border: 1px solid #2a3142; border-radius: 12px;
+                }
+                #falcon-route-ui .fr-qbar {
+                    display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px;
+                }
+                #falcon-route-ui .fr-qbtn {
+                    min-height: 36px !important; height: 36px !important; padding: 0 !important;
+                    border-radius: 10px; border: 1px solid #323849; background: #121826;
+                    color: #e2e8f0; cursor: pointer; font-size: 15px !important; line-height: 1;
+                    display: inline-flex; align-items: center; justify-content: center;
+                    transition: background .12s ease, border-color .12s ease, color .12s ease, transform .08s ease;
+                }
+                #falcon-route-ui .fr-qbtn:hover {
+                    background: #1e293b; border-color: #38bdf8; color: #fff; transform: translateY(-1px);
+                }
+                #falcon-route-ui .fr-qbtn.active {
+                    background: #b45309; border-color: #f59e0b; color: #fff;
+                    box-shadow: 0 0 0 1px rgba(245,158,11,.35);
+                }
+                #falcon-route-ui .fr-qbtn.fr-q-ok.active {
+                    background: #854d0e; border-color: #eab308; color: #fef3c7;
+                }
+                #falcon-route-ui .fr-qbtn.fr-q-go.active {
+                    background: #166534; border-color: #4ade80; color: #fff;
+                }
+                #falcon-route-ui .fr-qbtn.fr-q-danger:hover {
+                    background: #7f1d1d; border-color: #ef4444;
+                }
+                #falcon-route-ui .fr-qlabel {
+                    font-size: 10px; color: #64748b; font-weight: 650; letter-spacing: .04em;
+                    text-transform: uppercase; padding: 0 2px;
+                }
+                #falcon-route-ui .fr-quick-row {
+                    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
                 }
                 #falcon-route-ui .fr-card {
                     background: #171b26; border: 1px solid #2a3142; border-radius: 12px;
@@ -1161,8 +1194,23 @@
             </div>
             <div class="fr-body" id="fr-main">
                 <div class="fr-quick">
-                    <button class="fr-btn fr-btn-pick" id="fr-pick">🎯 Точка на карті</button>
-                    <button class="fr-btn fr-btn-pick" id="fr-coord-pick">📋 MGRS</button>
+                    <div class="fr-qlabel">Швидкі команди</div>
+                    <div class="fr-qbar" id="fr-qbar">
+                        <button type="button" class="fr-qbtn" id="fr-q-pick" title="Додати точку кліком на карті" data-fr-click="fr-pick" data-fr-acc="points">🎯</button>
+                        <button type="button" class="fr-qbtn" id="fr-q-mgrs" title="Скопіювати MGRS з карти" data-fr-click="fr-coord-pick" data-fr-acc="coords">📋</button>
+                        <button type="button" class="fr-qbtn" id="fr-q-ruler" title="Малювати лінійку" data-fr-click="fr-ruler" data-fr-acc="ruler">📏</button>
+                        <button type="button" class="fr-qbtn" id="fr-q-corridor" title="Малювати коридор" data-fr-click="fr-corridor" data-fr-acc="corridor">🛤</button>
+                        <button type="button" class="fr-qbtn" id="fr-q-copy" title="Скопіювати видимі координати" data-fr-click="fr-copy" data-fr-acc="coords">📤</button>
+                        <button type="button" class="fr-qbtn" id="fr-q-place" title="Поставити борт" data-fr-click="fr-flight-place" data-fr-acc="flight">📍</button>
+                        <button type="button" class="fr-qbtn fr-q-go" id="fr-q-fly" title="Летіти / стоп" data-fr-click="fr-flight-goto" data-fr-acc="flight">✈</button>
+                        <button type="button" class="fr-qbtn" id="fr-q-attach" title="Прикріпити до треку карти" data-fr-click="fr-flight-attach" data-fr-acc="flight">🔗</button>
+                        <button type="button" class="fr-qbtn" id="fr-q-points" title="Показати / сховати точки" data-fr-cmd="toggle-points" data-fr-acc="filters">👁</button>
+                        <button type="button" class="fr-qbtn fr-q-danger" id="fr-q-remove" title="Прибрати борт" data-fr-click="fr-flight-stop" data-fr-acc="flight">⏹</button>
+                    </div>
+                    <div class="fr-quick-row">
+                        <button class="fr-btn fr-btn-pick" id="fr-pick">🎯 Точка на карті</button>
+                        <button class="fr-btn fr-btn-pick" id="fr-coord-pick">📋 MGRS</button>
+                    </div>
                 </div>
 
                 <details class="fr-acc" open data-fr-acc="points">
@@ -2371,6 +2419,7 @@
                 rulerListener = null;
             }
             renderRuler();
+            syncQuickBar();
         }
 
         function addRulerPoint(lat, lon) {
@@ -2381,7 +2430,7 @@
         function stopPickMode() {
             isPickMode = false;
             pickBtn.classList.remove('active');
-            pickBtn.textContent = '🎯 Клацнути на карті';
+            pickBtn.textContent = '🎯 Точка на карті';
 
             if (pickListener) {
                 if (mapType === 'google') {
@@ -2391,6 +2440,7 @@
                 }
                 pickListener = null;
             }
+            syncQuickBar();
         }
 
         function stopCoordPickMode() {
@@ -2398,7 +2448,7 @@
             const btn = document.getElementById('fr-coord-pick');
             if (btn) {
                 btn.classList.remove('active');
-                btn.textContent = '📋 Координати (MGRS)';
+                btn.textContent = '📋 MGRS';
             }
             if (coordPickListener) {
                 if (mapType === 'google') {
@@ -2408,6 +2458,7 @@
                 }
                 coordPickListener = null;
             }
+            syncQuickBar();
         }
 
         async function copyMgrsAt(lat, lon, btn) {
@@ -2450,6 +2501,7 @@
                 draftCorridor = [];
                 refreshUI();
             }
+            syncQuickBar();
         }
 
         let corridorDbl = null;
@@ -2479,6 +2531,7 @@
         function onFilterChange() {
             saveSettings();
             refreshUI();
+            syncQuickBar();
         }
 
         const showPointsEl = document.getElementById('fr-show-points');
@@ -2551,6 +2604,7 @@
             isPickMode = true;
             pickBtn.classList.add('active');
             pickBtn.textContent = '👆 Клацніть у точці збиття...';
+            syncQuickBar();
 
             if (mapType === 'google') {
                 pickListener = map.addListener('click', (e) => {
@@ -2590,6 +2644,7 @@
             isCoordPickMode = true;
             coordPickBtn.classList.add('active');
             coordPickBtn.textContent = '👆 Клацни точку → MGRS';
+            syncQuickBar();
 
             if (mapType === 'google') {
                 coordPickListener = map.addListener('click', (e) => {
@@ -2625,6 +2680,7 @@
             corridorBtn.classList.add('active');
             corridorBtn.textContent = '✓ Завершити коридор';
             renderCorridor();
+            syncQuickBar();
 
             if (mapType === 'google') {
                 corridorListener = map.addListener('click', (e) => {
@@ -2681,6 +2737,7 @@
             rulerBtn.classList.add('active');
             rulerBtn.textContent = '✓ Стоп малювання';
             renderRuler();
+            syncQuickBar();
 
             if (mapType === 'google') {
                 rulerListener = map.addListener('click', (e) => {
@@ -2889,6 +2946,7 @@
                 btn.classList.remove('active');
                 btn.textContent = '✈ Летіти';
             }
+            syncQuickBar();
         }
 
         function updateAttachBtn() {
@@ -2904,6 +2962,74 @@
                 btn.classList.remove('active');
                 btn.textContent = '🔗 Прикріпити до треку';
             }
+            syncQuickBar();
+        }
+
+        function openAccSection(name) {
+            if (!name) return;
+            const d = panel.querySelector(`details.fr-acc[data-fr-acc="${name}"]`);
+            if (!d) return;
+            d.open = true;
+            try { d.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) { /* ignore */ }
+        }
+
+        function syncQuickBar() {
+            const pairs = [
+                ['fr-q-pick', 'fr-pick'],
+                ['fr-q-mgrs', 'fr-coord-pick'],
+                ['fr-q-ruler', 'fr-ruler'],
+                ['fr-q-corridor', 'fr-corridor'],
+                ['fr-q-place', 'fr-flight-place'],
+                ['fr-q-fly', 'fr-flight-goto'],
+                ['fr-q-attach', 'fr-flight-attach']
+            ];
+            pairs.forEach(([qid, sid]) => {
+                const q = document.getElementById(qid);
+                const s = document.getElementById(sid);
+                if (!q || !s) return;
+                q.classList.toggle('active', s.classList.contains('active'));
+            });
+            const pointsBtn = document.getElementById('fr-q-points');
+            const showCb = document.getElementById('fr-show-points');
+            if (pointsBtn && showCb) {
+                pointsBtn.classList.toggle('active', !showCb.checked);
+                pointsBtn.title = showCb.checked ? 'Сховати точки' : 'Показати точки';
+            }
+            const fly = document.getElementById('fr-q-fly');
+            if (fly) fly.title = myFlight?.cruise ? 'Стоп польоту' : 'Летіти за курсом';
+            const attach = document.getElementById('fr-q-attach');
+            if (attach) {
+                attach.title = isPlaneAttached
+                    ? 'Відкріпити від треку'
+                    : (isAttachPickMode ? 'Скасувати вибір треку' : 'Прикріпити до треку карти');
+            }
+        }
+
+        function wireQuickBar() {
+            const bar = document.getElementById('fr-qbar');
+            if (!bar || bar.__frWired) return;
+            bar.__frWired = true;
+            bar.addEventListener('click', (e) => {
+                const btn = e.target?.closest?.('.fr-qbtn');
+                if (!btn || !bar.contains(btn)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                openAccSection(btn.getAttribute('data-fr-acc'));
+                const cmd = btn.getAttribute('data-fr-cmd');
+                if (cmd === 'toggle-points') {
+                    const cb = document.getElementById('fr-show-points');
+                    if (cb) {
+                        cb.checked = !cb.checked;
+                        cb.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    syncQuickBar();
+                    return;
+                }
+                const targetId = btn.getAttribute('data-fr-click');
+                if (targetId) document.getElementById(targetId)?.click();
+                syncQuickBar();
+            });
+            syncQuickBar();
         }
 
         function clearAttachPickListener() {
@@ -3989,6 +4115,7 @@
                 else if (map.canvas) map.canvas.removeEventListener('click', flyToListener);
                 flyToListener = null;
             }
+            syncQuickBar();
         }
 
         function spawnOrMoveAircraft(lat, lon) {
@@ -4117,6 +4244,7 @@
             btn.classList.add('active');
             btn.textContent = '👆 Клацни на карті…';
             setFlightStatus('Клацни карту, щоб поставити борт');
+            syncQuickBar();
 
             if (mapType === 'google') {
                 placeAircraftListener = map.addListener('click', (e) => {
@@ -4177,6 +4305,8 @@
         document.getElementById('fr-flight-attach').onclick = () => togglePlaneAttach();
         document.getElementById('fr-flight-stop').onclick = () => removeMyAircraft();
         updateAttachBtn();
+        wireQuickBar();
+        syncQuickBar();
         document.getElementById('fr-range-target').addEventListener('change', (e) => {
             rangeTargetId = e.target.value || '';
         });
