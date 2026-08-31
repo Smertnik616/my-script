@@ -499,6 +499,7 @@
         let isPickMode = false;
         let isCorridorMode = false;
         let isRulerMode = false;
+        let showRuler = true;
         let applyRemote = false;
         let pickListener = null;
         let corridorListener = null;
@@ -651,14 +652,16 @@
 
                 <div class="fr-section">
                     <span class="fr-label">Лінійка (відстань / час)</span>
+                    <label class="fr-check"><input type="checkbox" id="fr-ruler-show" checked> Показувати лінійку на карті</label>
                     <div class="fr-row">
                         <label>Швидкість (км/год):</label>
                         <input type="number" id="fr-ruler-speed" value="${settings.rulerSpeedKmh || 5}" step="0.5" min="0.1">
                     </div>
                     <div class="fr-grid">
-                        <button class="fr-btn fr-btn-pick" id="fr-ruler">📏 Лінійка</button>
-                        <button class="fr-btn fr-btn-danger" id="fr-ruler-clear">Скинути лінійку</button>
+                        <button class="fr-btn fr-btn-pick" id="fr-ruler">📏 Малювати</button>
+                        <button class="fr-btn" id="fr-ruler-toggle">👁 Сховати</button>
                     </div>
+                    <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ruler-clear">Скинути лінійку</button>
                     <div class="fr-ruler-total" id="fr-ruler-status">Лінійка не задана (лише на цей запуск)</div>
                 </div>
 
@@ -1180,11 +1183,25 @@
             return ov;
         }
 
+        function updateRulerToggleUi() {
+            const cb = document.getElementById('fr-ruler-show');
+            const btn = document.getElementById('fr-ruler-toggle');
+            if (cb) cb.checked = showRuler;
+            if (btn) btn.textContent = showRuler ? '👁 Сховати' : '👁 Показати';
+        }
+
+        function setShowRuler(on) {
+            showRuler = !!on;
+            updateRulerToggleUi();
+            renderRuler();
+        }
+
         function renderRuler() {
             clearRulerOverlays();
             const status = document.getElementById('fr-ruler-status');
             const speed = getRulerSpeed();
             const pts = rulerPoints;
+            updateRulerToggleUi();
 
             if (!pts.length) {
                 status.textContent = isRulerMode
@@ -1194,9 +1211,12 @@
             }
 
             const totalM = rulerTotals(pts);
-            status.innerHTML = pts.length < 2
+            const base = pts.length < 2
                 ? `Точок: ${pts.length} · додай ще точку`
                 : `Разом: <b>${formatDistanceKm(totalM)}</b> · ${formatTravelTime(totalM, speed)} при ${speed} км/год · точок: ${pts.length}`;
+            status.innerHTML = showRuler ? base : `${base} · <span style="color:#fbbf24">приховано</span>`;
+
+            if (!showRuler) return;
 
             if (mapType === 'google') {
                 if (pts.length >= 2) {
@@ -1643,7 +1663,7 @@
             const btn = document.getElementById('fr-ruler');
             if (btn) {
                 btn.classList.remove('active');
-                btn.textContent = '📏 Лінійка';
+                btn.textContent = '📏 Малювати';
             }
             if (rulerListener) {
                 if (mapType === 'google') {
@@ -1889,8 +1909,10 @@
             }
 
             isRulerMode = true;
+            showRuler = true;
+            updateRulerToggleUi();
             rulerBtn.classList.add('active');
-            rulerBtn.textContent = '✓ Лінійка активна (клацай карту)';
+            rulerBtn.textContent = '✓ Стоп малювання';
             renderRuler();
 
             if (mapType === 'google') {
@@ -1920,6 +1942,17 @@
             rulerPoints = [];
             renderRuler();
         };
+
+        document.getElementById('fr-ruler-toggle').onclick = () => {
+            setShowRuler(!showRuler);
+        };
+
+        document.getElementById('fr-ruler-show').addEventListener('change', (e) => {
+            setShowRuler(e.target.checked);
+        });
+        document.getElementById('fr-ruler-show').addEventListener('input', (e) => {
+            setShowRuler(e.target.checked);
+        });
 
         document.getElementById('fr-ruler-speed').addEventListener('change', () => {
             saveSettings();
