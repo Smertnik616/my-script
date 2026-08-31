@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'compass-line-6';
+    const FR_BUILD = 'ruler-alpha-7';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -1347,10 +1347,10 @@
         }
 
         function rulerUnderlayColor(hex) {
-            const o = hexToRgbA(hex, 0.85);
+            const o = hexToRgbA(hex, 0.35);
             return {
-                css: `rgb(${Math.round(o.red * 80)}, ${Math.round(o.green * 80)}, ${Math.round(o.blue * 80)})`,
-                rgba: { red: o.red * 0.32, green: o.green * 0.32, blue: o.blue * 0.32, alpha: 0.85 }
+                css: `rgba(${Math.round(o.red * 70)}, ${Math.round(o.green * 70)}, ${Math.round(o.blue * 70)}, 0.35)`,
+                rgba: { red: o.red * 0.28, green: o.green * 0.28, blue: o.blue * 0.28, alpha: 0.35 }
             };
         }
 
@@ -1447,7 +1447,7 @@
                         path,
                         geodesic: true,
                         strokeColor: under.css,
-                        strokeOpacity: 0.85,
+                        strokeOpacity: 0.35,
                         strokeWeight: 4,
                         map,
                         zIndex: 158
@@ -1456,7 +1456,7 @@
                         path,
                         geodesic: true,
                         strokeColor: color,
-                        strokeOpacity: 1,
+                        strokeOpacity: 0.55,
                         strokeWeight: 1.75,
                         map,
                         zIndex: 159
@@ -1494,7 +1494,7 @@
             const Cesium = window.Cesium;
             const color = getRulerColor();
             const under = rulerUnderlayColor(color);
-            const mainRgba = hexToRgbA(color, 1);
+            const mainRgba = hexToRgbA(color, 0.55);
             if (pts.length >= 2) {
                 const positions = pts.map(p => Cartesian3.fromDegrees(p.lon, p.lat));
                 rulerOverlays.push(map.entities.add({
