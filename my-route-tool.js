@@ -1438,20 +1438,19 @@
             const Cesium = window.Cesium;
             if (pts.length >= 2) {
                 const positions = pts.map(p => Cartesian3.fromDegrees(p.lon, p.lat));
-                const glowMat = Cesium?.PolylineGlowMaterialProperty
-                    ? new Cesium.PolylineGlowMaterialProperty({
-                        glowPower: 0.22,
-                        taperPower: 0.7,
-                        color: Cesium.Color.fromCssColorString('#67e8f9')
-                    })
-                    : { red: 0.4, green: 0.91, blue: 0.98, alpha: 1 };
+                // Підкладка + основна (без Glow — він ламає render на clampToGround)
                 rulerOverlays.push(map.entities.add({
                     polyline: {
                         positions,
-                        width: 6,
-                        clampToGround: true,
-                        arcType: Cesium?.ArcType?.GEODESIC,
-                        material: glowMat
+                        width: 8,
+                        material: { red: 0.05, green: 0.29, blue: 0.43, alpha: 0.9 }
+                    }
+                }));
+                rulerOverlays.push(map.entities.add({
+                    polyline: {
+                        positions,
+                        width: 3.5,
+                        material: { red: 0.4, green: 0.91, blue: 0.98, alpha: 1 }
                     }
                 }));
             }
@@ -2556,20 +2555,18 @@
                     polyline: {
                         positions: [planePos, tipPos],
                         width: 3,
-                        clampToGround: true,
-                        material: Cesium?.Color
-                            ? Cesium.Color.fromCssColorString('#fbbf24')
-                            : { red: 0.98, green: 0.75, blue: 0.14, alpha: 1 }
+                        clampToGround: false,
+                        material: { red: 0.98, green: 0.75, blue: 0.14, alpha: 1 }
                     }
                 });
+                const courseRgba = hexToRgbA(color, hasCourse ? 0.55 : 0);
                 const courseLine = map.entities.add({
+                    show: hasCourse,
                     polyline: {
                         positions: [planePos, coursePos],
                         width: 2,
-                        clampToGround: true,
-                        material: Cesium?.Color
-                            ? Cesium.Color.fromCssColorString(color).withAlpha(hasCourse ? 0.55 : 0)
-                            : hexToRgbA(color, hasCourse ? 0.55 : 0)
+                        clampToGround: false,
+                        material: courseRgba
                     }
                 });
                 let headingHandle = null;
@@ -2578,9 +2575,7 @@
                         position: tipPos,
                         point: {
                             pixelSize: 14,
-                            color: Cesium?.Color
-                                ? Cesium.Color.fromCssColorString('#fbbf24')
-                                : { red: 0.98, green: 0.75, blue: 0.14, alpha: 1 },
+                            color: { red: 0.98, green: 0.75, blue: 0.14, alpha: 1 },
                             outlineColor: { red: 1, green: 1, blue: 1, alpha: 1 },
                             outlineWidth: 2,
                             disableDepthTestDistance: Number.POSITIVE_INFINITY,
@@ -2606,12 +2601,10 @@
                 if (slot.headingLine?.polyline) {
                     slot.headingLine.polyline.positions = [planePos, tipPos];
                 }
-                if (slot.courseLine?.polyline) {
-                    slot.courseLine.polyline.positions = [planePos, coursePos];
-                    if (Cesium?.Color) {
-                        slot.courseLine.polyline.material = Cesium.Color
-                            .fromCssColorString(color)
-                            .withAlpha(hasCourse ? 0.55 : 0);
+                if (slot.courseLine) {
+                    slot.courseLine.show = hasCourse;
+                    if (slot.courseLine.polyline) {
+                        slot.courseLine.polyline.positions = [planePos, coursePos];
                     }
                 }
                 if (slot.headingHandle && !(isDraggingHeading && isMe)) {
