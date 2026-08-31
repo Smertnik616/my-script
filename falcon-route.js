@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'plane-sm-12';
+    const FR_BUILD = 'compass-unstick-13';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -654,6 +654,8 @@
         let isDraggingPlane = false;
         let headingDragTip = null;
         let planeDragPos = null;
+        let ignoreHeadingInputUntil = 0;
+        let headingDocUpHandler = null;
         let rangeTargetId = '';
         let rangeLineOverlays = [];
         let rangeTrack = null;
@@ -2328,9 +2330,8 @@
                 }
             } catch (_) { /* ignore */ }
             if (id === CLIENT_ID) {
-                isDraggingHeading = false;
+                cancelHeadingDrag(false);
                 isDraggingPlane = false;
-                headingDragTip = null;
                 planeDragPos = null;
                 destroyCesiumHeadingDrag();
             }
@@ -2459,23 +2460,21 @@
             cesiumHeadingHandler = handler;
 
             handler.setInputAction((movement) => {
+                if (Date.now() < ignoreHeadingInputUntil) return;
                 const slot = flightMarkers[CLIENT_ID];
                 if (!slot || !myFlight?.active) return;
                 const picked = map.scene.pick(movement.position);
                 if (!picked?.id) return;
-                if (slot.headingHandle && picked.id === slot.headingHandle) {
-                    isDraggingHeading = true;
-                    setCesiumCamDrag(false);
-                    return;
-                }
                 if (slot.headingLine && picked.id === slot.headingLine) {
                     isDraggingHeading = true;
                     setCesiumCamDrag(false);
+                    armHeadingDocRelease();
                     return;
                 }
                 if (slot.headingHit && picked.id === slot.headingHit) {
                     isDraggingHeading = true;
                     setCesiumCamDrag(false);
+                    armHeadingDocRelease();
                     return;
                 }
                 if (slot.entity && picked.id === slot.entity) {
@@ -2517,11 +2516,7 @@
 
             const endDrag = () => {
                 if (isDraggingHeading) {
-                    const tip = headingDragTip;
-                    isDraggingHeading = false;
-                    headingDragTip = null;
-                    setCesiumCamDrag(true);
-                    if (tip) applyCourseFromTip(tip);
+                    cancelHeadingDrag(true);
                     return;
                 }
                 if (isDraggingPlane) {
@@ -2600,18 +2595,51 @@
             };
         }
 
+        function cancelHeadingDrag(applyTip) {
+            if (!isDraggingHeading && !headingDocUpHandler) {
+                headingDragTip = null;
+                return;
+            }
+            const tip = applyTip ? (headingDragTip || null) : null;
+            isDraggingHeading = false;
+            headingDragTip = null;
+            if (mapType === 'google' && map.setOptions) {
+                try { map.setOptions({ draggable: true }); } catch (_) { /* ignore */ }
+            }
+            if (mapType === 'cesium') setCesiumCamDrag(true);
+            if (headingDocUpHandler) {
+                document.removeEventListener('mouseup', headingDocUpHandler, true);
+                document.removeEventListener('pointerup', headingDocUpHandler, true);
+                headingDocUpHandler = null;
+            }
+            if (tip) applyCourseFromTip(tip);
+        }
+
+        function armHeadingDocRelease() {
+            if (headingDocUpHandler) {
+                document.removeEventListener('mouseup', headingDocUpHandler, true);
+                document.removeEventListener('pointerup', headingDocUpHandler, true);
+            }
+            headingDocUpHandler = () => {
+                cancelHeadingDrag(true);
+            };
+            document.addEventListener('mouseup', headingDocUpHandler, true);
+            document.addEventListener('pointerup', headingDocUpHandler, true);
+        }
+
         function wireGoogleHeadingLine(hitLine) {
             const listeners = [];
             listeners.push(hitLine.addListener('mousedown', (e) => {
+                if (Date.now() < ignoreHeadingInputUntil) return;
                 if (!myFlight?.active || !e?.latLng) return;
+                if (isDraggingPlane) return;
                 e?.domEvent?.preventDefault?.();
                 e?.domEvent?.stopPropagation?.();
                 isDraggingHeading = true;
                 headingDragTip = { lat: e.latLng.lat(), lon: e.latLng.lng() };
                 if (map.setOptions) map.setOptions({ draggable: false });
-                const cur = isDraggingPlane && planeDragPos
-                    ? planeDragPos
-                    : (resolveFlightPos(myFlight) || myFlight);
+                armHeadingDocRelease();
+                const cur = resolveFlightPos(myFlight) || myFlight;
                 myFlight.heading = bearingDeg(cur, headingDragTip);
                 upsertFlightMarker(CLIENT_ID, myFlight, {
                     lat: cur.lat,
@@ -2622,9 +2650,7 @@
             listeners.push(map.addListener('mousemove', (e) => {
                 if (!isDraggingHeading || !myFlight?.active || !e?.latLng) return;
                 headingDragTip = { lat: e.latLng.lat(), lon: e.latLng.lng() };
-                const cur = isDraggingPlane && planeDragPos
-                    ? planeDragPos
-                    : (resolveFlightPos(myFlight) || myFlight);
+                const cur = resolveFlightPos(myFlight) || myFlight;
                 myFlight.heading = bearingDeg(cur, headingDragTip);
                 upsertFlightMarker(CLIENT_ID, myFlight, {
                     lat: cur.lat,
@@ -2634,13 +2660,10 @@
             }));
             listeners.push(map.addListener('mouseup', (e) => {
                 if (!isDraggingHeading) return;
-                const tip = e?.latLng
-                    ? { lat: e.latLng.lat(), lon: e.latLng.lng() }
-                    : headingDragTip;
-                isDraggingHeading = false;
-                headingDragTip = null;
-                if (map.setOptions) map.setOptions({ draggable: true });
-                if (tip) applyCourseFromTip(tip);
+                if (e?.latLng) {
+                    headingDragTip = { lat: e.latLng.lat(), lon: e.latLng.lng() };
+                }
+                cancelHeadingDrag(true);
             }));
             return listeners;
         }
@@ -2721,13 +2744,13 @@
                         zIndex: 198,
                         clickable: false
                     });
-                    // Широка майже прозора лінія — зона кліку/тягання курсу (без кружечка)
+                    // Вузька зона кліку курсу (широка зона ловила клік постановки й «липла» до миші)
                     const headingHit = new google.maps.Polyline({
                         path: [planeLatLng, tipLatLng],
                         geodesic: true,
                         strokeColor: '#fbbf24',
                         strokeOpacity: 0.01,
-                        strokeWeight: 18,
+                        strokeWeight: 10,
                         map,
                         zIndex: 199,
                         clickable: isMe,
@@ -3275,6 +3298,9 @@
             };
             setFlightStatus(`${callsign}: виставлено на карту`);
             updateCruiseBtn();
+            // Не ловити mouseup/клік постановки як старт тягання курсу
+            cancelHeadingDrag(false);
+            ignoreHeadingInputUntil = Date.now() + 600;
             pushMyFlight();
             ensurePushTimer();
             startFlightLoop();
