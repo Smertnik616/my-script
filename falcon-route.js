@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'compass-unstick-13';
+    const FR_BUILD = 'compass-own-14';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -2358,8 +2358,11 @@
             }
         }
 
-        function headingTipFrom(pos, heading) {
-            if (isDraggingHeading && headingDragTip) return headingDragTip;
+        function headingTipFrom(pos, heading, flightId) {
+            // Tip миші лише для СВОГО борту — інакше чужі компаси «їдуть» за курсором
+            if (flightId === CLIENT_ID && isDraggingHeading && headingDragTip) {
+                return headingDragTip;
+            }
             const hdg = Number.isFinite(heading) ? heading : 0;
             return destinationPoint(pos.lat, pos.lon, hdg, headingLengthMeters(pos.lat));
         }
@@ -2708,7 +2711,7 @@
             const isMe = id === CLIENT_ID;
             const heading = Number.isFinite(pos.heading) ? pos.heading : (flight.heading || 0);
             const labelText = (isMe ? '● ' : '') + callsign;
-            const tip = headingTipFrom(pos, heading);
+            const tip = headingTipFrom(pos, heading, id);
             const hasCourse = !!(flight.to && Number.isFinite(flight.to.lat) && Number.isFinite(flight.to.lon)
                 && !(isDraggingHeading && isMe) && !(isDraggingPlane && isMe));
 
