@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'quickbar-18';
+    const FR_BUILD = 'range-label-19';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1181,6 +1181,13 @@
                     font-size: 11px; padding: 3px 7px; border-radius: 6px;
                     background: rgba(8,47,73,.92); border: 1px solid rgba(125,211,252,.85);
                     box-shadow: 0 2px 8px rgba(0,0,0,.45); text-shadow: none;
+                }
+                .fr-range-label .fr-ruler-chip {
+                    font-size: 11px; padding: 3px 8px; border-radius: 6px;
+                    background: rgba(46,16,101,.9); color: #f5f3ff;
+                    border: 1px solid rgba(167,139,250,.9);
+                    box-shadow: 0 2px 10px rgba(0,0,0,.45); text-shadow: none;
+                    font-weight: 700;
                 }
             </style>
             <div class="fr-head" id="fr-drag">
@@ -3843,6 +3850,166 @@
             rangeTrack = null;
         }
 
+        function createGoogleRangeLabel(position, text, bearingDegVal) {
+            let rot = Number.isFinite(bearingDegVal) ? bearingDegVal : 0;
+            if (rot > 90 && rot < 270) rot = (rot + 180) % 360;
+            class FrRangeLabel extends google.maps.OverlayView {
+                constructor() {
+                    super();
+                    this.position = position;
+                    this.div = null;
+                    this.rot = rot;
+                    this.text = text || '';
+                }
+                onAdd() {
+                    this.div = document.createElement('div');
+                    this.div.className = 'fr-ruler-label fr-range-label';
+                    const chip = document.createElement('div');
+                    chip.className = 'fr-ruler-chip';
+                    chip.textContent = this.text;
+                    this.div.appendChild(chip);
+                    this.getPanes().floatPane.appendChild(this.div);
+                }
+                draw() {
+                    const proj = this.getProjection();
+                    if (!proj || !this.div) return;
+                    const p = proj.fromLatLngToDivPixel(this.position);
+                    if (!p) return;
+                    this.div.style.left = p.x + 'px';
+                    this.div.style.top = p.y + 'px';
+                    this.div.style.transform =
+                        `translate(-50%, -50%) rotate(${this.rot}deg) translate(0, -12px)`;
+                }
+                onRemove() {
+                    if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
+                    this.div = null;
+                }
+                setPose(latLng, bearing) {
+                    this.position = latLng;
+                    let r = Number.isFinite(bearing) ? bearing : this.rot;
+                    if (r > 90 && r < 270) r = (r + 180) % 360;
+                    this.rot = r;
+                    this.draw();
+                }
+                setLabel(t) {
+                    this.text = t || '';
+                    const chip = this.div?.querySelector('.fr-ruler-chip');
+                    if (chip) chip.textContent = this.text;
+                }
+            }
+            const ov = new FrRangeLabel();
+            ov.setMap(map);
+            return ov;
+        }
+
+        function updateRangeLine(myPos, targetPos, meta) {
+            if (!myPos || !targetPos) {
+                clearRangeLine();
+                return;
+            }
+            const distM = Number.isFinite(meta?.dist)
+                ? meta.dist
+                : haversineM(myPos.lat, myPos.lon, targetPos.lat, targetPos.lon);
+            const eta = meta?.eta || formatTravelTime(distM, getRulerSpeed());
+            const name = meta?.name ? `${meta.name} · ` : '';
+            const labelText = `${name}${formatDistanceKm(distM)} · ETA ${eta}`;
+            const mid = {
+                lat: (myPos.lat + targetPos.lat) / 2,
+                lon: (myPos.lon + targetPos.lon) / 2
+            };
+            const brg = bearingDeg(
+                { lat: myPos.lat, lon: myPos.lon },
+                { lat: targetPos.lat, lon: targetPos.lon }
+            );
+
+            if (mapType === 'google') {
+                const path = [
+                    { lat: myPos.lat, lng: myPos.lon },
+                    { lat: targetPos.lat, lng: targetPos.lon }
+                ];
+                const midLatLng = new google.maps.LatLng(mid.lat, mid.lon);
+                if (!rangeLineOverlays.length) {
+                    rangeLineOverlays.push(new google.maps.Polyline({
+                        path,
+                        geodesic: true,
+                        strokeColor: '#a78bfa',
+                        strokeOpacity: 0.85,
+                        strokeWeight: 2,
+                        map,
+                        zIndex: 190,
+                        clickable: false,
+                        icons: [{
+                            icon: {
+                                path: 'M 0,-1 0,1',
+                                strokeOpacity: 0.85,
+                                scale: 2
+                            },
+                            offset: '0',
+                            repeat: '12px'
+                        }]
+                    }));
+                    rangeLineOverlays.push(createGoogleRangeLabel(midLatLng, labelText, brg));
+                } else {
+                    rangeLineOverlays[0].setPath(path);
+                    const label = rangeLineOverlays[1];
+                    if (label?.setPose) {
+                        label.setPose(midLatLng, brg);
+                        label.setLabel(labelText);
+                    } else {
+                        try { label?.setMap?.(null); } catch (_) { /* ignore */ }
+                        rangeLineOverlays[1] = createGoogleRangeLabel(midLatLng, labelText, brg);
+                    }
+                }
+                return;
+            }
+            if (!Cartesian3) return;
+            const Cesium = window.Cesium;
+            if (!rangeTrack) {
+                rangeTrack = {
+                    a: Cartesian3.fromDegrees(myPos.lon, myPos.lat),
+                    b: Cartesian3.fromDegrees(targetPos.lon, targetPos.lat),
+                    mid: Cartesian3.fromDegrees(mid.lon, mid.lat),
+                    text: labelText
+                };
+                rangeLineOverlays.push(map.entities.add({
+                    polyline: {
+                        positions: Cesium?.CallbackProperty
+                            ? new Cesium.CallbackProperty(() => [rangeTrack.a, rangeTrack.b], false)
+                            : [rangeTrack.a, rangeTrack.b],
+                        width: 2,
+                        material: toCesiumColor({ red: 0.65, green: 0.55, blue: 0.98, alpha: 0.85 })
+                    }
+                }));
+                rangeLineOverlays.push(map.entities.add({
+                    position: Cesium?.CallbackProperty
+                        ? new Cesium.CallbackProperty(() => rangeTrack.mid, false)
+                        : rangeTrack.mid,
+                    label: {
+                        text: Cesium?.CallbackProperty
+                            ? new Cesium.CallbackProperty(() => rangeTrack.text, false)
+                            : labelText,
+                        font: 'bold 12px sans-serif',
+                        fillColor: toCesiumColor({ red: 0.96, green: 0.95, blue: 1, alpha: 1 }),
+                        outlineColor: toCesiumColor({ red: 0.18, green: 0.06, blue: 0.4, alpha: 1 }),
+                        outlineWidth: 3,
+                        style: Cesium?.LabelStyle?.FILL_AND_OUTLINE,
+                        pixelOffset: Cesium?.Cartesian2
+                            ? new Cesium.Cartesian2(0, -14)
+                            : undefined,
+                        showBackground: true,
+                        backgroundColor: toCesiumColor({ red: 0.18, green: 0.06, blue: 0.4, alpha: 0.9 }),
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                }));
+            } else {
+                rangeTrack.a = Cartesian3.fromDegrees(myPos.lon, myPos.lat);
+                rangeTrack.b = Cartesian3.fromDegrees(targetPos.lon, targetPos.lat);
+                rangeTrack.mid = Cartesian3.fromDegrees(mid.lon, mid.lat);
+                rangeTrack.text = labelText;
+            }
+            map.scene?.requestRender?.();
+        }
+
         function listOnlinePeers(myPos) {
             const speed = getRulerSpeed();
             const now = Date.now();
@@ -3893,64 +4060,6 @@
             }
         }
 
-        function updateRangeLine(myPos, targetPos) {
-            if (!myPos || !targetPos) {
-                clearRangeLine();
-                return;
-            }
-            if (mapType === 'google') {
-                const path = [
-                    { lat: myPos.lat, lng: myPos.lon },
-                    { lat: targetPos.lat, lng: targetPos.lon }
-                ];
-                if (!rangeLineOverlays.length) {
-                    rangeLineOverlays.push(new google.maps.Polyline({
-                        path,
-                        geodesic: true,
-                        strokeColor: '#a78bfa',
-                        strokeOpacity: 0.85,
-                        strokeWeight: 2,
-                        map,
-                        zIndex: 190,
-                        clickable: false,
-                        icons: [{
-                            icon: {
-                                path: 'M 0,-1 0,1',
-                                strokeOpacity: 0.85,
-                                scale: 2
-                            },
-                            offset: '0',
-                            repeat: '12px'
-                        }]
-                    }));
-                } else {
-                    rangeLineOverlays[0].setPath(path);
-                }
-                return;
-            }
-            if (!Cartesian3) return;
-            const Cesium = window.Cesium;
-            if (!rangeTrack) {
-                rangeTrack = {
-                    a: Cartesian3.fromDegrees(myPos.lon, myPos.lat),
-                    b: Cartesian3.fromDegrees(targetPos.lon, targetPos.lat)
-                };
-                rangeLineOverlays.push(map.entities.add({
-                    polyline: {
-                        positions: Cesium?.CallbackProperty
-                            ? new Cesium.CallbackProperty(() => [rangeTrack.a, rangeTrack.b], false)
-                            : [rangeTrack.a, rangeTrack.b],
-                        width: 2,
-                        material: toCesiumColor({ red: 0.65, green: 0.55, blue: 0.98, alpha: 0.85 })
-                    }
-                }));
-            } else {
-                rangeTrack.a = Cartesian3.fromDegrees(myPos.lon, myPos.lat);
-                rangeTrack.b = Cartesian3.fromDegrees(targetPos.lon, targetPos.lat);
-            }
-            map.scene?.requestRender?.();
-        }
-
         function updateDistancesPanel(myPos) {
             const box = document.getElementById('fr-flight-distances');
             const rangeEl = document.getElementById('fr-flight-range');
@@ -3984,7 +4093,11 @@
                     `<b>${target.name}</b>: ${formatDistanceKm(target.dist)} · ETA ${target.eta}` +
                     ` · ${getRulerSpeed()} км/год`;
             }
-            updateRangeLine(myPos, target.pos);
+            updateRangeLine(myPos, target.pos, {
+                name: target.name,
+                dist: target.dist,
+                eta: target.eta
+            });
         }
 
         function tickFlights() {
