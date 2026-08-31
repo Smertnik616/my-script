@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'range-9';
+    const FR_BUILD = 'mgrs-copy-10';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -640,6 +640,7 @@
         let corridorOverlays = [];
         let rulerOverlays = [];
         let isPickMode = false;
+        let isCoordPickMode = false;
         let isCorridorMode = false;
         let isRulerMode = false;
         let showRuler = true;
@@ -662,6 +663,7 @@
         let cesiumHeadingHandler = null;
         let applyRemote = false;
         let pickListener = null;
+        let coordPickListener = null;
         let corridorListener = null;
         let rulerListener = null;
         let draftCorridor = [];
@@ -769,6 +771,7 @@
             </div>
             <div class="fr-body" id="fr-main">
                 <button class="fr-btn fr-btn-pick" id="fr-pick">🎯 Клацнути на карті</button>
+                <button class="fr-btn fr-btn-pick" id="fr-coord-pick">📋 Координати (MGRS)</button>
 
                 <div class="fr-row">
                     <label>Збиття:</label>
@@ -1938,6 +1941,38 @@
             }
         }
 
+        function stopCoordPickMode() {
+            isCoordPickMode = false;
+            const btn = document.getElementById('fr-coord-pick');
+            if (btn) {
+                btn.classList.remove('active');
+                btn.textContent = '📋 Координати (MGRS)';
+            }
+            if (coordPickListener) {
+                if (mapType === 'google') {
+                    google.maps.event.removeListener(coordPickListener);
+                } else if (map.canvas) {
+                    map.canvas.removeEventListener('click', coordPickListener);
+                }
+                coordPickListener = null;
+            }
+        }
+
+        async function copyMgrsAt(lat, lon, btn) {
+            const mgrs = latLonToMgrs(lat, lon, 5);
+            const dd = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+            const text = mgrs;
+            await copyText(text, btn, `✅ ${mgrs}`);
+            console.log('[FALCONROUTE] MGRS copied:', mgrs, '| DD:', dd);
+            try {
+                const tip = document.createElement('div');
+                tip.textContent = `📋 ${mgrs}`;
+                tip.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999999;background:#14532d;color:#bbf7d0;padding:10px 14px;border-radius:8px;font:12px/1.3 system-ui;box-shadow:0 4px 16px rgba(0,0,0,.5)';
+                document.body.appendChild(tip);
+                setTimeout(() => tip.remove(), 2200);
+            } catch (_) { /* ignore */ }
+        }
+
         function stopCorridorMode(commit) {
             if (corridorListener) {
                 if (mapType === 'google') {
@@ -2054,6 +2089,7 @@
         pickBtn.onclick = () => {
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
+            if (isCoordPickMode) stopCoordPickMode();
             stopAircraftModes();
             if (isPickMode) {
                 stopPickMode();
@@ -2088,9 +2124,42 @@
             }
         };
 
+        const coordPickBtn = document.getElementById('fr-coord-pick');
+        coordPickBtn.onclick = () => {
+            if (isCorridorMode) stopCorridorMode(false);
+            if (isRulerMode) stopRulerMode();
+            if (isPickMode) stopPickMode();
+            stopAircraftModes();
+            if (isCoordPickMode) {
+                stopCoordPickMode();
+                return;
+            }
+
+            isCoordPickMode = true;
+            coordPickBtn.classList.add('active');
+            coordPickBtn.textContent = '👆 Клацни точку → MGRS';
+
+            if (mapType === 'google') {
+                coordPickListener = map.addListener('click', (e) => {
+                    if (!e?.latLng) return;
+                    copyMgrsAt(e.latLng.lat(), e.latLng.lng(), coordPickBtn);
+                    stopCoordPickMode();
+                });
+            } else {
+                coordPickListener = (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    copyMgrsAt(ll.lat, ll.lon, coordPickBtn);
+                    stopCoordPickMode();
+                };
+                map.canvas.addEventListener('click', coordPickListener, { once: true });
+            }
+        };
+
         const corridorBtn = document.getElementById('fr-corridor');
         corridorBtn.onclick = () => {
             if (isPickMode) stopPickMode();
+            if (isCoordPickMode) stopCoordPickMode();
             if (isRulerMode) stopRulerMode();
             stopAircraftModes();
 
@@ -2145,6 +2214,7 @@
         const rulerBtn = document.getElementById('fr-ruler');
         rulerBtn.onclick = () => {
             if (isPickMode) stopPickMode();
+            if (isCoordPickMode) stopCoordPickMode();
             if (isCorridorMode) stopCorridorMode(false);
             stopAircraftModes();
 
@@ -3281,6 +3351,7 @@
 
         function beginPlaceAircraft() {
             if (isPickMode) stopPickMode();
+            if (isCoordPickMode) stopCoordPickMode();
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
             if (isPlaceAircraftMode) {
