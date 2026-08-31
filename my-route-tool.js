@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'ruler-alpha-7';
+    const FR_BUILD = 'cruise-8';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -843,7 +843,7 @@
 
                 <div class="fr-section">
                     <span class="fr-label">Борт (окремо від лінійки; швидкість спільна)</span>
-                    <div class="fr-label" style="color:#94a3b8;font-size:10px;line-height:1.35">Перетягни літак мишкою. Тягни жовту лінію курсу, щоб змінити напрямок.</div>
+                    <div class="fr-label" style="color:#94a3b8;font-size:10px;line-height:1.35">«Летіти» — рух за курсом без цілі. Перетягування літака не зупиняє політ. Жовта лінія — змінити курс.</div>
                     <div class="fr-row">
                         <label>Позивний:</label>
                         <input type="text" id="fr-callsign" value="${settings.callsign || 'Falcon'}" maxlength="16" placeholder="Falcon">
@@ -854,7 +854,7 @@
                     </div>
                     <div class="fr-grid">
                         <button class="fr-btn fr-btn-pick" id="fr-flight-place">📍 Поставити</button>
-                        <button class="fr-btn fr-btn-ok" id="fr-flight-goto">✈ Летіти сюди</button>
+                        <button class="fr-btn fr-btn-ok" id="fr-flight-goto">✈ Летіти</button>
                     </div>
                     <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-flight-stop">⏹ Прибрати борт</button>
                     <div class="fr-label" id="fr-flight-status">Борт не виставлено</div>
@@ -2194,7 +2194,7 @@
             renderRuler();
             if (myFlight) {
                 myFlight.speedKmh = getRulerSpeed();
-                if (myFlight.to) {
+                if (myFlight.cruise || myFlight.to) {
                     const cur = resolveFlightPos(myFlight);
                     if (cur) {
                         myFlight.from = { lat: cur.lat, lon: cur.lon };
@@ -2297,31 +2297,20 @@
             myFlight.heading = heading;
             myFlight.lat = cur.lat;
             myFlight.lon = cur.lon;
+            myFlight.from = { lat: cur.lat, lon: cur.lon };
+            myFlight.to = null;
+            myFlight.speedKmh = getRulerSpeed();
 
-            const wasFlying = !!(myFlight.to && myFlight.from && myFlight.startedAt);
-            let remainM = null;
-            if (wasFlying) {
-                const live = resolveFlightPos(myFlight);
-                remainM = live
-                    ? Math.max(150, (live.totalM || 0) - (live.traveledM || 0))
-                    : haversineM(cur.lat, cur.lon, myFlight.to.lat, myFlight.to.lon);
-            }
-
-            if (wasFlying && remainM != null) {
-                const dest = destinationPoint(cur.lat, cur.lon, heading, remainM);
-                myFlight.from = { lat: cur.lat, lon: cur.lon };
-                myFlight.to = dest;
+            if (myFlight.cruise) {
                 myFlight.startedAt = Date.now();
-                myFlight.speedKmh = getRulerSpeed();
                 setFlightStatus(
-                    `${myFlight.callsign}: новий курс ${Math.round(heading)}° · ${formatDistanceKm(remainM)} · ETA ${formatTravelTime(remainM, myFlight.speedKmh)}`
+                    `${myFlight.callsign}: новий курс ${Math.round(heading)}° · летить далі`
                 );
+                updateCruiseBtn();
             } else {
-                myFlight.to = null;
                 myFlight.startedAt = null;
-                myFlight.from = { lat: cur.lat, lon: cur.lon };
                 setFlightStatus(
-                    `${myFlight.callsign}: курс ${Math.round(heading)}° · тягни ручку або «Летіти сюди»`
+                    `${myFlight.callsign}: курс ${Math.round(heading)}° · натисни «Летіти»`
                 );
             }
             myFlight.updatedAt = Date.now();
@@ -2332,17 +2321,40 @@
 
         function applyPlaneMove(lat, lon) {
             if (!myFlight?.active) return;
+            const keepCruise = !!myFlight.cruise;
             myFlight.lat = lat;
             myFlight.lon = lon;
             myFlight.from = { lat, lon };
             myFlight.to = null;
-            myFlight.startedAt = null;
             myFlight.updatedAt = Date.now();
             myFlight.speedKmh = getRulerSpeed();
-            setFlightStatus(`${myFlight.callsign}: переміщено на нову позицію`);
+            if (keepCruise) {
+                myFlight.cruise = true;
+                myFlight.startedAt = Date.now();
+                setFlightStatus(
+                    `${myFlight.callsign}: переміщено · летить далі · курс ${Math.round(myFlight.heading || 0)}°`
+                );
+            } else {
+                myFlight.cruise = false;
+                myFlight.startedAt = null;
+                setFlightStatus(`${myFlight.callsign}: переміщено на нову позицію`);
+            }
+            updateCruiseBtn();
             pushMyFlight();
             ensurePushTimer();
             startFlightLoop();
+        }
+
+        function updateCruiseBtn() {
+            const btn = document.getElementById('fr-flight-goto');
+            if (!btn) return;
+            if (myFlight?.cruise) {
+                btn.classList.add('active');
+                btn.textContent = '⏸ Стоп';
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = '✈ Летіти';
+            }
         }
 
         function destroyCesiumHeadingDrag() {
@@ -2822,6 +2834,35 @@
 
         function resolveFlightPos(flight, now = Date.now()) {
             if (!flight) return null;
+            if (flight.cruise && flight.from && flight.startedAt && Number.isFinite(flight.heading)) {
+                const speed = Number(flight.speedKmh) || getRulerSpeed();
+                if (!(speed > 0)) {
+                    return {
+                        lat: flight.from.lat,
+                        lon: flight.from.lon,
+                        heading: flight.heading || 0,
+                        done: false,
+                        cruise: true,
+                        traveledM: 0
+                    };
+                }
+                const metersPerMs = (speed * 1000) / 3600 / 1000;
+                const traveled = Math.max(0, (now - flight.startedAt) * metersPerMs);
+                const pos = destinationPoint(
+                    flight.from.lat,
+                    flight.from.lon,
+                    flight.heading,
+                    traveled
+                );
+                return {
+                    lat: pos.lat,
+                    lon: pos.lon,
+                    heading: flight.heading,
+                    done: false,
+                    cruise: true,
+                    traveledM: traveled
+                };
+            }
             if (flight.to && flight.from && flight.startedAt) {
                 const pos = positionAlongPath(
                     [flight.from, flight.to],
@@ -2906,8 +2947,17 @@
                         myFlight.from = { lat: myFlight.lat, lon: myFlight.lon };
                         myFlight.to = null;
                         myFlight.startedAt = null;
+                        myFlight.cruise = false;
                         pushMyFlight();
-                        setFlightStatus(`${myFlight.callsign}: прибув · клацни «Летіти сюди» для нового курсу`);
+                        updateCruiseBtn();
+                        setFlightStatus(`${myFlight.callsign}: прибув · натисни «Летіти»`);
+                    } else if (pos.cruise || (myFlight.cruise && !pos.stationary)) {
+                        myFlight.lat = pos.lat;
+                        myFlight.lon = pos.lon;
+                        myFlight.heading = pos.heading;
+                        setFlightStatus(
+                            `${myFlight.callsign}: летить · курс ${Math.round(myFlight.heading || 0)}° · ${formatDistanceKm(pos.traveledM || 0)} · ${myFlight.speedKmh || getRulerSpeed()} км/год`
+                        );
                     } else if (!pos.stationary && myFlight.to) {
                         myFlight.lat = pos.lat;
                         myFlight.lon = pos.lon;
@@ -2971,15 +3021,11 @@
             isPlaceAircraftMode = false;
             isFlyToMode = false;
             const placeBtn = document.getElementById('fr-flight-place');
-            const gotoBtn = document.getElementById('fr-flight-goto');
             if (placeBtn) {
                 placeBtn.classList.remove('active');
                 placeBtn.textContent = '📍 Поставити';
             }
-            if (gotoBtn) {
-                gotoBtn.classList.remove('active');
-                gotoBtn.textContent = '✈ Летіти сюди';
-            }
+            updateCruiseBtn();
             if (placeAircraftListener) {
                 if (mapType === 'google') google.maps.event.removeListener(placeAircraftListener);
                 else if (map.canvas) map.canvas.removeEventListener('click', placeAircraftListener);
@@ -3008,32 +3054,46 @@
                 heading: prev?.heading || 0,
                 from: { lat, lon },
                 to: null,
+                cruise: false,
                 startedAt: null,
                 updatedAt: Date.now(),
                 active: true
             };
             setFlightStatus(`${callsign}: виставлено на карту`);
+            updateCruiseBtn();
             pushMyFlight();
             ensurePushTimer();
             startFlightLoop();
         }
 
-        function flyAircraftTo(lat, lon) {
+        function toggleCruise() {
             if (!myFlight?.active) {
                 alert('Спочатку постав борт кнопкою «Поставити».');
                 return;
             }
             const cur = resolveFlightPos(myFlight) || myFlight;
-            myFlight.speedKmh = getRulerSpeed();
+            myFlight.lat = cur.lat;
+            myFlight.lon = cur.lon;
             myFlight.from = { lat: cur.lat, lon: cur.lon };
-            myFlight.to = { lat, lon };
-            myFlight.heading = bearingDeg(myFlight.from, myFlight.to);
-            myFlight.startedAt = Date.now();
+            myFlight.to = null;
+            myFlight.speedKmh = getRulerSpeed();
             myFlight.updatedAt = Date.now();
-            const dist = haversineM(myFlight.from.lat, myFlight.from.lon, lat, lon);
-            setFlightStatus(
-                `${myFlight.callsign}: курс задано · ${formatDistanceKm(dist)} · ETA ${formatTravelTime(dist, myFlight.speedKmh)}`
-            );
+
+            if (myFlight.cruise) {
+                myFlight.cruise = false;
+                myFlight.startedAt = null;
+                setFlightStatus(
+                    `${myFlight.callsign}: стоп · курс ${Math.round(myFlight.heading || 0)}°`
+                );
+            } else {
+                if (!Number.isFinite(myFlight.heading)) myFlight.heading = 0;
+                myFlight.cruise = true;
+                myFlight.startedAt = Date.now();
+                setFlightStatus(
+                    `${myFlight.callsign}: летить · курс ${Math.round(myFlight.heading || 0)}° · ${myFlight.speedKmh} км/год`
+                );
+            }
+            updateCruiseBtn();
             pushMyFlight();
             ensurePushTimer();
             startFlightLoop();
@@ -3054,6 +3114,7 @@
                 startFlightLoop();
             }
             setFlightStatus('Борт не виставлено');
+            updateCruiseBtn();
             updateDistancesPanel(null);
         }
 
@@ -3107,44 +3168,6 @@
             }
         }
 
-        function beginFlyTo() {
-            if (!myFlight?.active) {
-                alert('Спочатку постав борт кнопкою «Поставити».');
-                return;
-            }
-            if (isPickMode) stopPickMode();
-            if (isCorridorMode) stopCorridorMode(false);
-            if (isRulerMode) stopRulerMode();
-            if (isFlyToMode) {
-                stopAircraftModes();
-                setFlightStatus(`${myFlight.callsign}: очікує курс`);
-                return;
-            }
-            stopAircraftModes();
-            isFlyToMode = true;
-            const btn = document.getElementById('fr-flight-goto');
-            btn.classList.add('active');
-            btn.textContent = '👆 Куди летіти?';
-            setFlightStatus('Клацни точку призначення на карті');
-
-            if (mapType === 'google') {
-                flyToListener = map.addListener('click', (e) => {
-                    const ll = mapClickLatLon(e);
-                    if (!ll) return;
-                    flyAircraftTo(ll.lat, ll.lon);
-                    stopAircraftModes();
-                });
-            } else {
-                flyToListener = (e) => {
-                    const ll = mapClickLatLon(e);
-                    if (!ll) return;
-                    flyAircraftTo(ll.lat, ll.lon);
-                    stopAircraftModes();
-                };
-                map.canvas.addEventListener('click', flyToListener);
-            }
-        }
-
         function listenToFlights() {
             if (!FIREBASE_ENABLED) return;
             try {
@@ -3182,7 +3205,7 @@
         }
 
         document.getElementById('fr-flight-place').onclick = () => beginPlaceAircraft();
-        document.getElementById('fr-flight-goto').onclick = () => beginFlyTo();
+        document.getElementById('fr-flight-goto').onclick = () => toggleCruise();
         document.getElementById('fr-flight-stop').onclick = () => removeMyAircraft();
         document.getElementById('fr-callsign').addEventListener('change', () => {
             saveSettings();
