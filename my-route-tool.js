@@ -463,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'range-label-19';
+    const FR_BUILD = 'range-text-20';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1183,11 +1183,14 @@
                     box-shadow: 0 2px 8px rgba(0,0,0,.45); text-shadow: none;
                 }
                 .fr-range-label .fr-ruler-chip {
-                    font-size: 11px; padding: 3px 8px; border-radius: 6px;
-                    background: rgba(46,16,101,.9); color: #f5f3ff;
-                    border: 1px solid rgba(167,139,250,.9);
-                    box-shadow: 0 2px 10px rgba(0,0,0,.45); text-shadow: none;
-                    font-weight: 700;
+                    font-size: 12px; padding: 0; border-radius: 0;
+                    background: transparent; color: #ede9fe;
+                    border: none; box-shadow: none; font-weight: 700;
+                    text-shadow:
+                        0 0 4px rgba(46,16,101,.95),
+                        -1px -1px 0 #2e1065, 1px -1px 0 #2e1065,
+                        -1px 1px 0 #2e1065, 1px 1px 0 #2e1065,
+                        0 1px 3px rgba(0,0,0,.65);
                 }
             </style>
             <div class="fr-head" id="fr-drag">
@@ -3991,13 +3994,12 @@
                         font: 'bold 12px sans-serif',
                         fillColor: toCesiumColor({ red: 0.96, green: 0.95, blue: 1, alpha: 1 }),
                         outlineColor: toCesiumColor({ red: 0.18, green: 0.06, blue: 0.4, alpha: 1 }),
-                        outlineWidth: 3,
+                        outlineWidth: 4,
                         style: Cesium?.LabelStyle?.FILL_AND_OUTLINE,
                         pixelOffset: Cesium?.Cartesian2
                             ? new Cesium.Cartesian2(0, -14)
                             : undefined,
-                        showBackground: true,
-                        backgroundColor: toCesiumColor({ red: 0.18, green: 0.06, blue: 0.4, alpha: 0.9 }),
+                        showBackground: false,
                         disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
                 }));
