@@ -50,6 +50,7 @@
         defaultRadius: 300,
         corridorWidth: 2000,
         rulerSpeedKmh: 5,
+        rulerColor: '#22d3ee',
         callsign: 'Falcon',
         flightColor: '#22d3ee'
     };
@@ -462,7 +463,7 @@
         };
     }
 
-    const FR_BUILD = 'drag-ruler-5';
+    const FR_BUILD = 'compass-line-6';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -828,6 +829,10 @@
                         <label>Швидкість (км/год):</label>
                         <input type="number" id="fr-ruler-speed" value="${settings.rulerSpeedKmh || 5}" step="0.5" min="0.1">
                     </div>
+                    <div class="fr-row">
+                        <label>Колір лінійки:</label>
+                        <input type="color" id="fr-ruler-color" value="${settings.rulerColor || '#22d3ee'}">
+                    </div>
                     <div class="fr-grid">
                         <button class="fr-btn fr-btn-pick" id="fr-ruler">📏 Малювати</button>
                         <button class="fr-btn" id="fr-ruler-toggle">👁 Сховати</button>
@@ -838,7 +843,7 @@
 
                 <div class="fr-section">
                     <span class="fr-label">Борт (окремо від лінійки; швидкість спільна)</span>
-                    <div class="fr-label" style="color:#94a3b8;font-size:10px;line-height:1.35">Перетягни літак мишкою, щоб переставити. Жовта ручка — змінити курс.</div>
+                    <div class="fr-label" style="color:#94a3b8;font-size:10px;line-height:1.35">Перетягни літак мишкою. Тягни жовту лінію курсу, щоб змінити напрямок.</div>
                     <div class="fr-row">
                         <label>Позивний:</label>
                         <input type="text" id="fr-callsign" value="${settings.callsign || 'Falcon'}" maxlength="16" placeholder="Falcon">
@@ -953,6 +958,7 @@
             settings.defaultRadius = parseFloat(document.getElementById('fr-default-rad').value) || 300;
             settings.corridorWidth = parseFloat(document.getElementById('fr-corridor-w').value) || 2000;
             settings.rulerSpeedKmh = parseFloat(document.getElementById('fr-ruler-speed').value) || 5;
+            settings.rulerColor = document.getElementById('fr-ruler-color')?.value || '#22d3ee';
             settings.callsign = (document.getElementById('fr-callsign')?.value || 'Falcon').trim().slice(0, 16) || 'Falcon';
             settings.flightColor = document.getElementById('fr-flight-color')?.value || '#22d3ee';
             settings.showPoints = document.getElementById('fr-show-points').checked;
@@ -1334,6 +1340,20 @@
             return Number.isFinite(v) && v > 0 ? v : (settings.rulerSpeedKmh || 5);
         }
 
+        function getRulerColor() {
+            const el = document.getElementById('fr-ruler-color');
+            const v = (el?.value || settings.rulerColor || '#22d3ee').trim();
+            return /^#[0-9a-fA-F]{6}$/.test(v) ? v : '#22d3ee';
+        }
+
+        function rulerUnderlayColor(hex) {
+            const o = hexToRgbA(hex, 0.85);
+            return {
+                css: `rgb(${Math.round(o.red * 80)}, ${Math.round(o.green * 80)}, ${Math.round(o.blue * 80)})`,
+                rgba: { red: o.red * 0.32, green: o.green * 0.32, blue: o.blue * 0.32, alpha: 0.85 }
+            };
+        }
+
         function rulerTotals(points) {
             let totalM = 0;
             for (let i = 0; i < points.length - 1; i++) {
@@ -1420,35 +1440,36 @@
 
             if (mapType === 'google') {
                 const path = pts.map(p => ({ lat: p.lat, lng: p.lon }));
+                const color = getRulerColor();
+                const under = rulerUnderlayColor(color);
                 if (pts.length >= 2) {
-                    // Підкладка + основна лінія — чіткіше за один тонкий stroke
                     rulerOverlays.push(new google.maps.Polyline({
                         path,
                         geodesic: true,
-                        strokeColor: '#0c4a6e',
-                        strokeOpacity: 0.9,
-                        strokeWeight: 8,
+                        strokeColor: under.css,
+                        strokeOpacity: 0.85,
+                        strokeWeight: 4,
                         map,
                         zIndex: 158
                     }));
                     rulerOverlays.push(new google.maps.Polyline({
                         path,
                         geodesic: true,
-                        strokeColor: '#67e8f9',
+                        strokeColor: color,
                         strokeOpacity: 1,
-                        strokeWeight: 3.5,
+                        strokeWeight: 1.75,
                         map,
                         zIndex: 159
                     }));
                 }
 
                 pts.forEach((p, idx) => {
-                    const size = 30;
+                    const size = 26;
                     const m = new google.maps.Marker({
                         position: { lat: p.lat, lng: p.lon },
                         map,
                         icon: {
-                            url: rulerVertexDataUrl(idx + 1, '#22d3ee'),
+                            url: rulerVertexDataUrl(idx + 1, color),
                             scaledSize: new google.maps.Size(size, size),
                             anchor: new google.maps.Point(size / 2, size / 2)
                         },
@@ -1471,21 +1492,23 @@
 
             if (!Cartesian3) return;
             const Cesium = window.Cesium;
+            const color = getRulerColor();
+            const under = rulerUnderlayColor(color);
+            const mainRgba = hexToRgbA(color, 1);
             if (pts.length >= 2) {
                 const positions = pts.map(p => Cartesian3.fromDegrees(p.lon, p.lat));
-                // Підкладка + основна (без Glow — він ламає render на clampToGround)
                 rulerOverlays.push(map.entities.add({
                     polyline: {
                         positions,
-                        width: 8,
-                        material: toCesiumColor({ red: 0.05, green: 0.29, blue: 0.43, alpha: 0.9 })
+                        width: 4,
+                        material: toCesiumColor(under.rgba)
                     }
                 }));
                 rulerOverlays.push(map.entities.add({
                     polyline: {
                         positions,
-                        width: 3.5,
-                        material: toCesiumColor({ red: 0.4, green: 0.91, blue: 0.98, alpha: 1 })
+                        width: 1.75,
+                        material: toCesiumColor(mainRgba)
                     }
                 }));
             }
@@ -1494,9 +1517,9 @@
                 const ent = map.entities.add({
                     position: Cartesian3.fromDegrees(p.lon, p.lat),
                     billboard: {
-                        image: rulerVertexDataUrl(idx + 1, '#22d3ee'),
-                        width: 28,
-                        height: 28,
+                        image: rulerVertexDataUrl(idx + 1, color),
+                        width: 24,
+                        height: 24,
                         disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
                 });
@@ -2186,6 +2209,14 @@
         document.getElementById('fr-ruler-speed').addEventListener('input', () => {
             renderRuler();
         });
+        document.getElementById('fr-ruler-color').addEventListener('input', () => {
+            saveSettings();
+            renderRuler();
+        });
+        document.getElementById('fr-ruler-color').addEventListener('change', () => {
+            saveSettings();
+            renderRuler();
+        });
 
         function myFlightUrl() {
             return FLIGHTS_URL.replace(/flights\.json$/, 'flights/' + CLIENT_ID + '.json');
@@ -2199,6 +2230,7 @@
                     slot.marker?.setMap(null);
                     slot.labelOv?.setMap(null);
                     slot.headingLine?.setMap(null);
+                    slot.headingHit?.setMap(null);
                     slot.courseLine?.setMap(null);
                     slot.headingHandle?.setMap(null);
                     (slot.handleListeners || []).forEach(l => {
@@ -2211,6 +2243,7 @@
                     if (slot.entity) map.entities.remove(slot.entity);
                     if (slot.labelEnt) map.entities.remove(slot.labelEnt);
                     if (slot.headingLine) map.entities.remove(slot.headingLine);
+                    if (slot.headingHit) map.entities.remove(slot.headingHit);
                     if (slot.courseLine) map.entities.remove(slot.courseLine);
                     if (slot.headingHandle) map.entities.remove(slot.headingHandle);
                 }
@@ -2344,6 +2377,16 @@
                     setCesiumCamDrag(false);
                     return;
                 }
+                if (slot.headingLine && picked.id === slot.headingLine) {
+                    isDraggingHeading = true;
+                    setCesiumCamDrag(false);
+                    return;
+                }
+                if (slot.headingHit && picked.id === slot.headingHit) {
+                    isDraggingHeading = true;
+                    setCesiumCamDrag(false);
+                    return;
+                }
                 if (slot.entity && picked.id === slot.entity) {
                     isDraggingPlane = true;
                     planeDragPos = { lat: myFlight.lat, lon: myFlight.lon };
@@ -2466,18 +2509,27 @@
             };
         }
 
-        function wireGoogleHeadingHandle(handle) {
+        function wireGoogleHeadingLine(hitLine) {
             const listeners = [];
-            listeners.push(handle.addListener('mousedown', (e) => {
-                e?.stop?.();
+            listeners.push(hitLine.addListener('mousedown', (e) => {
+                if (!myFlight?.active || !e?.latLng) return;
+                e?.domEvent?.preventDefault?.();
                 e?.domEvent?.stopPropagation?.();
-            }));
-            listeners.push(handle.addListener('dragstart', () => {
                 isDraggingHeading = true;
+                headingDragTip = { lat: e.latLng.lat(), lon: e.latLng.lng() };
                 if (map.setOptions) map.setOptions({ draggable: false });
+                const cur = isDraggingPlane && planeDragPos
+                    ? planeDragPos
+                    : (resolveFlightPos(myFlight) || myFlight);
+                myFlight.heading = bearingDeg(cur, headingDragTip);
+                upsertFlightMarker(CLIENT_ID, myFlight, {
+                    lat: cur.lat,
+                    lon: cur.lon,
+                    heading: myFlight.heading
+                });
             }));
-            listeners.push(handle.addListener('drag', (e) => {
-                if (!e?.latLng || !myFlight?.active) return;
+            listeners.push(map.addListener('mousemove', (e) => {
+                if (!isDraggingHeading || !myFlight?.active || !e?.latLng) return;
                 headingDragTip = { lat: e.latLng.lat(), lon: e.latLng.lng() };
                 const cur = isDraggingPlane && planeDragPos
                     ? planeDragPos
@@ -2489,7 +2541,8 @@
                     heading: myFlight.heading
                 });
             }));
-            listeners.push(handle.addListener('dragend', (e) => {
+            listeners.push(map.addListener('mouseup', (e) => {
+                if (!isDraggingHeading) return;
                 const tip = e?.latLng
                     ? { lat: e.latLng.lat(), lon: e.latLng.lng() }
                     : headingDragTip;
@@ -2556,7 +2609,7 @@
                         map,
                         icon: googlePlaneIcon(color, heading, isMe),
                         zIndex: 200,
-                        title: isMe ? 'Перетягни борт · жовта ручка = курс' : callsign,
+                        title: isMe ? 'Перетягни борт · тягни жовту лінію курсу' : callsign,
                         optimized: false,
                         clickable: isMe,
                         draggable: isMe,
@@ -2572,10 +2625,22 @@
                         geodesic: true,
                         strokeColor: '#fbbf24',
                         strokeOpacity: 0.95,
-                        strokeWeight: 4,
+                        strokeWeight: 3,
                         map,
                         zIndex: 198,
                         clickable: false
+                    });
+                    // Широка майже прозора лінія — зона кліку/тягання курсу (без кружечка)
+                    const headingHit = new google.maps.Polyline({
+                        path: [planeLatLng, tipLatLng],
+                        geodesic: true,
+                        strokeColor: '#fbbf24',
+                        strokeOpacity: 0.01,
+                        strokeWeight: 18,
+                        map,
+                        zIndex: 199,
+                        clickable: isMe,
+                        cursor: isMe ? 'grab' : undefined
                     });
                     const courseLine = new google.maps.Polyline({
                         path: hasCourse
@@ -2589,33 +2654,15 @@
                         zIndex: 197,
                         clickable: false
                     });
-                    let headingHandle = null;
                     let handleListeners = [];
                     let planeListeners = [];
                     if (isMe) {
-                        headingHandle = new google.maps.Marker({
-                            position: tipLatLng,
-                            map,
-                            draggable: true,
-                            cursor: 'grab',
-                            zIndex: 210,
-                            title: 'Тягни, щоб змінити курс',
-                            optimized: false,
-                            icon: {
-                                path: google.maps.SymbolPath.CIRCLE,
-                                scale: 8,
-                                fillColor: '#fbbf24',
-                                fillOpacity: 1,
-                                strokeColor: '#fff',
-                                strokeWeight: 2
-                            }
-                        });
-                        handleListeners = wireGoogleHeadingHandle(headingHandle);
+                        handleListeners = wireGoogleHeadingLine(headingHit);
                         planeListeners = wireGooglePlaneDrag(marker);
                     }
                     flightMarkers[id] = {
-                        marker, labelOv, headingLine, courseLine, headingHandle,
-                        handleListeners, planeListeners, color
+                        marker, labelOv, headingLine, headingHit, courseLine,
+                        headingHandle: null, handleListeners, planeListeners, color
                     };
                 } else {
                     if (!(isDraggingPlane && isMe)) {
@@ -2625,6 +2672,7 @@
                     slot.labelOv?.setPos(new google.maps.LatLng(pos.lat, pos.lon));
                     slot.labelOv?.setText?.(labelText, color);
                     slot.headingLine.setPath([planeLatLng, tipLatLng]);
+                    slot.headingHit?.setPath([planeLatLng, tipLatLng]);
                     if (hasCourse) {
                         slot.courseLine.setOptions({ strokeOpacity: 0.55, strokeColor: color });
                         slot.courseLine.setPath([
@@ -2634,9 +2682,6 @@
                     } else {
                         slot.courseLine.setOptions({ strokeOpacity: 0 });
                         slot.courseLine.setPath([planeLatLng, planeLatLng]);
-                    }
-                    if (slot.headingHandle && !(isDraggingHeading && isMe)) {
-                        slot.headingHandle.setPosition(tipLatLng);
                     }
                     if (slot.color !== color) slot.color = color;
                 }
@@ -2689,26 +2734,26 @@
                         positions: Cesium?.CallbackProperty
                             ? new Cesium.CallbackProperty(() => [track.plane, track.tip], false)
                             : [planePos, tipPos],
-                        width: 4,
+                        width: 3,
                         material: toCesiumColor('#fbbf24')
                     }
                 });
-                let headingHandle = null;
+                let headingHit = null;
                 if (isMe) {
-                    headingHandle = map.entities.add({
-                        position: tipPos,
-                        point: {
-                            pixelSize: 16,
-                            color: toCesiumColor('#fbbf24'),
-                            outlineColor: toCesiumColor({ red: 1, green: 1, blue: 1, alpha: 1 }),
-                            outlineWidth: 2,
-                            disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    headingHit = map.entities.add({
+                        polyline: {
+                            positions: Cesium?.CallbackProperty
+                                ? new Cesium.CallbackProperty(() => [track.plane, track.tip], false)
+                                : [planePos, tipPos],
+                            width: 16,
+                            material: toCesiumColor({ red: 0.98, green: 0.75, blue: 0.14, alpha: 0.08 })
                         }
                     });
                     ensureCesiumHeadingDrag();
                 }
                 flightMarkers[id] = {
-                    entity, labelEnt, headingLine, courseLine: null, headingHandle, color, track
+                    entity, labelEnt, headingLine, headingHit, courseLine: null,
+                    headingHandle: null, color, track
                 };
             } else {
                 if (slot.track) {
@@ -2731,9 +2776,6 @@
                 if (slot.labelEnt.label) {
                     if (slot.labelEnt.label.text?.setValue) slot.labelEnt.label.text.setValue(labelText);
                     else slot.labelEnt.label.text = labelText;
-                }
-                if (slot.headingHandle && !(isDraggingHeading && isMe)) {
-                    slot.headingHandle.position = tipPos;
                 }
             }
             map.scene?.requestRender?.();
