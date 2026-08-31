@@ -462,7 +462,7 @@
         };
     }
 
-    const FR_BUILD = 'plane-compass-3';
+    const FR_BUILD = 'plane-compass-4';
 
     // Силует літака (ніс вгору / на північ), для Google Symbol path
     const PLANE_SYMBOL_PATH =
@@ -485,18 +485,17 @@
     }
 
     function planeBillboardImage(color) {
-        const key = String(color || '#22d3ee').toLowerCase() + '|v3';
+        const key = String(color || '#22d3ee').toLowerCase() + '|v4';
         if (planeBillboardCache[key]) return planeBillboardCache[key];
-        // Компас-лінія вперед вшита в SVG — без Entity polyline (вони валили Cesium render)
+        // Коротка риска на носі; довга лінія курсу — окрема polyline на карті
         const svg =
-            `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">` +
-            `<defs><filter id="s" x="-50%" y="-50%" width="200%" height="200%">` +
-            `<feDropShadow dx="0" dy="1.5" stdDeviation="1.8" flood-color="#000" flood-opacity="0.55"/></filter></defs>` +
-            `<g transform="translate(80 80)" filter="url(#s)">` +
-            `<line x1="0" y1="-10" x2="0" y2="-72" stroke="#fbbf24" stroke-width="4" stroke-linecap="round"/>` +
-            `<circle cx="0" cy="-72" r="6" fill="#fbbf24" stroke="#ffffff" stroke-width="2"/>` +
-            `<g transform="scale(1.55)">` +
-            `<path d="${PLANE_SYMBOL_PATH}" fill="${String(color || '#22d3ee').toLowerCase()}" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>` +
+            `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">` +
+            `<defs><filter id="s" x="-40%" y="-40%" width="180%" height="180%">` +
+            `<feDropShadow dx="0" dy="1.5" stdDeviation="1.6" flood-color="#000" flood-opacity="0.5"/></filter></defs>` +
+            `<g transform="translate(64 64)" filter="url(#s)">` +
+            `<line x1="0" y1="-14" x2="0" y2="-36" stroke="#fbbf24" stroke-width="3.5" stroke-linecap="round"/>` +
+            `<g transform="scale(1.65)">` +
+            `<path d="${PLANE_SYMBOL_PATH}" fill="${String(color || '#22d3ee').toLowerCase()}" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/>` +
             `</g></g></svg>`;
         planeBillboardCache[key] = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
         return planeBillboardCache[key];
@@ -2209,14 +2208,15 @@
             if (mapType === 'google') {
                 const zoom = typeof map.getZoom === 'function' ? (map.getZoom() || 10) : 10;
                 const mPerPx = 156543.03392 * Math.cos(toRad(lat)) / Math.pow(2, zoom);
-                return Math.max(400, Math.min(40000, mPerPx * 200));
+                // ~320 px на екрані — довга видима лінія курсу
+                return Math.max(800, Math.min(80000, mPerPx * 320));
             }
             try {
                 const carto = map.camera?.positionCartographic;
                 const h = carto ? carto.height : 50000;
-                return Math.max(700, Math.min(60000, h * 0.07));
+                return Math.max(1500, Math.min(100000, h * 0.14));
             } catch (_) {
-                return 5000;
+                return 12000;
             }
         }
 
@@ -2463,7 +2463,7 @@
                         geodesic: true,
                         strokeColor: '#fbbf24',
                         strokeOpacity: 0.95,
-                        strokeWeight: 3,
+                        strokeWeight: 4,
                         map,
                         zIndex: 198,
                         clickable: false
@@ -2541,13 +2541,13 @@
             const tipPos = Cartesian3.fromDegrees(tip.lon, tip.lat);
 
             if (!slot) {
-                // Без Entity polyline: компас уже в SVG; інакше Cesium падає (toCssColorString)
+                const track = { plane: planePos, tip: tipPos };
                 const entity = map.entities.add({
                     position: planePos,
                     billboard: {
                         image: planeBillboardImage(color),
-                        width: isMe ? 110 : 92,
-                        height: isMe ? 110 : 92,
+                        width: isMe ? 96 : 82,
+                        height: isMe ? 96 : 82,
                         rotation,
                         alignedAxis: Cesium?.Cartesian3?.UNIT_Z,
                         disableDepthTestDistance: Number.POSITIVE_INFINITY
@@ -2569,6 +2569,16 @@
                         disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
                 });
+                // Довга лінія курсу на карті (не в SVG) — CallbackProperty, без перезапису material
+                const headingLine = map.entities.add({
+                    polyline: {
+                        positions: Cesium?.CallbackProperty
+                            ? new Cesium.CallbackProperty(() => [track.plane, track.tip], false)
+                            : [planePos, tipPos],
+                        width: 4,
+                        material: toCesiumColor('#fbbf24')
+                    }
+                });
                 let headingHandle = null;
                 if (isMe) {
                     headingHandle = map.entities.add({
@@ -2584,9 +2594,13 @@
                     ensureCesiumHeadingDrag();
                 }
                 flightMarkers[id] = {
-                    entity, labelEnt, headingLine: null, courseLine: null, headingHandle, color
+                    entity, labelEnt, headingLine, courseLine: null, headingHandle, color, track
                 };
             } else {
+                if (slot.track) {
+                    slot.track.plane = planePos;
+                    slot.track.tip = tipPos;
+                }
                 slot.entity.position = planePos;
                 if (slot.entity.billboard) {
                     if (typeof slot.entity.billboard.rotation === 'object' && slot.entity.billboard.rotation?.setValue) {
