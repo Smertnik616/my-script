@@ -441,6 +441,38 @@
         };
     }
 
+    // Силует літака (ніс вгору / на північ), для Google Symbol path
+    const PLANE_SYMBOL_PATH =
+        'M 0,-18 L 3.2,-4 L 14,-1.2 L 14,1.5 L 3.4,2.6 L 2,11.5 L 6.2,14 L 6.2,15.8 L 0,13.2 L -6.2,15.8 L -6.2,14 L -2,11.5 L -3.4,2.6 L -14,1.5 L -14,-1.2 L -3.2,-4 Z';
+
+    const planeBillboardCache = Object.create(null);
+
+    function planeBillboardImage(color) {
+        const key = String(color || '#22d3ee').toLowerCase();
+        if (planeBillboardCache[key]) return planeBillboardCache[key];
+        const svg =
+            `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">` +
+            `<defs><filter id="s" x="-30%" y="-30%" width="160%" height="160%">` +
+            `<feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-color="#000" flood-opacity="0.55"/></filter></defs>` +
+            `<g transform="translate(32 32)" filter="url(#s)">` +
+            `<path d="${PLANE_SYMBOL_PATH}" fill="${key}" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/>` +
+            `</g></svg>`;
+        planeBillboardCache[key] = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+        return planeBillboardCache[key];
+    }
+
+    function rulerVertexDataUrl(index, fill) {
+        const n = String(index);
+        const svg =
+            `<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">` +
+            `<circle cx="36" cy="36" r="24" fill="rgba(8,47,73,0.55)"/>` +
+            `<circle cx="36" cy="36" r="18" fill="${fill}" stroke="#ffffff" stroke-width="3.5"/>` +
+            `<text x="36" y="37" text-anchor="middle" dominant-baseline="middle" ` +
+            `font-family="system-ui,-apple-system,sans-serif" font-weight="700" font-size="${n.length > 1 ? 18 : 20}" fill="#082f49">${n}</text>` +
+            `</svg>`;
+        return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+    }
+
     function boot(attempt) {
         const engine = detectMapEngine();
         if (engine) {
@@ -663,7 +695,16 @@
                 .fr-map-label { position: absolute; transform: translate(-50%, calc(-100% - 14px)); pointer-events: none; white-space: nowrap; text-align: center; z-index: 1; }
                 .fr-map-label .fr-means-tag { background: rgba(15,16,21,.92); color: #fde68a; font: bold 10px/1.2 system-ui; padding: 2px 5px; border-radius: 3px; border: 1px solid rgba(253,230,138,.45); max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
                 .fr-ruler-label { position: absolute; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap; z-index: 2; }
-                .fr-ruler-label .fr-ruler-chip { background: rgba(8,47,73,.92); color: #e0f2fe; font: bold 10px/1.25 system-ui; padding: 3px 6px; border-radius: 4px; border: 1px solid #38bdf8; box-shadow: 0 2px 8px rgba(0,0,0,.45); }
+                .fr-ruler-label .fr-ruler-chip {
+                    background: rgba(8,47,73,.94); color: #f0f9ff;
+                    font: 600 12px/1.3 system-ui, -apple-system, sans-serif;
+                    padding: 5px 9px; border-radius: 7px;
+                    border: 1px solid rgba(125,211,252,.95);
+                    box-shadow: 0 0 0 1px rgba(8,47,73,.55), 0 4px 14px rgba(0,0,0,.5);
+                    -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision;
+                    backdrop-filter: blur(4px);
+                }
+                .fr-flight-label .fr-ruler-chip { font-size: 11px; padding: 4px 8px; }
                 #falcon-route-ui .fr-ruler-total { color: #7dd3fc; font-size: 11px; font-weight: bold; line-height: 1.35; }
             </style>
             <div class="fr-head" id="fr-drag">
@@ -1318,39 +1359,41 @@
             if (!showRuler) return;
 
             if (mapType === 'google') {
+                const path = pts.map(p => ({ lat: p.lat, lng: p.lon }));
                 if (pts.length >= 2) {
-                    const poly = new google.maps.Polyline({
-                        path: pts.map(p => ({ lat: p.lat, lng: p.lon })),
+                    // Підкладка + основна лінія — чіткіше за один тонкий stroke
+                    rulerOverlays.push(new google.maps.Polyline({
+                        path,
                         geodesic: true,
-                        strokeColor: '#22d3ee',
-                        strokeOpacity: 0.95,
-                        strokeWeight: 3,
+                        strokeColor: '#0c4a6e',
+                        strokeOpacity: 0.9,
+                        strokeWeight: 8,
                         map,
-                        zIndex: 160
-                    });
-                    rulerOverlays.push(poly);
+                        zIndex: 158
+                    }));
+                    rulerOverlays.push(new google.maps.Polyline({
+                        path,
+                        geodesic: true,
+                        strokeColor: '#67e8f9',
+                        strokeOpacity: 1,
+                        strokeWeight: 3.5,
+                        map,
+                        zIndex: 159
+                    }));
                 }
 
                 pts.forEach((p, idx) => {
+                    const size = 30;
                     const m = new google.maps.Marker({
                         position: { lat: p.lat, lng: p.lon },
                         map,
-                        label: {
-                            text: String(idx + 1),
-                            color: '#082f49',
-                            fontSize: '10px',
-                            fontWeight: 'bold'
-                        },
                         icon: {
-                            path: google.maps.SymbolPath.CIRCLE,
-                            scale: 8,
-                            fillColor: '#22d3ee',
-                            fillOpacity: 1,
-                            strokeColor: '#fff',
-                            strokeWeight: 1.5,
-                            labelOrigin: new google.maps.Point(0, 0)
+                            url: rulerVertexDataUrl(idx + 1, '#22d3ee'),
+                            scaledSize: new google.maps.Size(size, size),
+                            anchor: new google.maps.Point(size / 2, size / 2)
                         },
-                        zIndex: 161
+                        zIndex: 161,
+                        optimized: false
                     });
                     rulerOverlays.push(m);
                 });
@@ -1367,35 +1410,36 @@
             }
 
             if (!Cartesian3) return;
+            const Cesium = window.Cesium;
             if (pts.length >= 2) {
                 const positions = pts.map(p => Cartesian3.fromDegrees(p.lon, p.lat));
-                const entity = map.entities.add({
+                const glowMat = Cesium?.PolylineGlowMaterialProperty
+                    ? new Cesium.PolylineGlowMaterialProperty({
+                        glowPower: 0.22,
+                        taperPower: 0.7,
+                        color: Cesium.Color.fromCssColorString('#67e8f9')
+                    })
+                    : { red: 0.4, green: 0.91, blue: 0.98, alpha: 1 };
+                rulerOverlays.push(map.entities.add({
                     polyline: {
                         positions,
-                        width: 3,
-                        material: { red: 0.13, green: 0.83, blue: 0.93, alpha: 1 }
+                        width: 6,
+                        clampToGround: true,
+                        arcType: Cesium?.ArcType?.GEODESIC,
+                        material: glowMat
                     }
-                });
-                rulerOverlays.push(entity);
+                }));
             }
 
             pts.forEach((p, idx) => {
                 const ent = map.entities.add({
                     position: Cartesian3.fromDegrees(p.lon, p.lat),
-                    point: {
-                        pixelSize: 12,
-                        color: { red: 0.13, green: 0.83, blue: 0.93, alpha: 1 },
-                        outlineColor: { red: 1, green: 1, blue: 1, alpha: 1 },
-                        outlineWidth: 2
-                    },
-                    label: {
-                        text: String(idx + 1),
-                        font: 'bold 11px sans-serif',
-                        fillColor: { red: 1, green: 1, blue: 1, alpha: 1 },
-                        outlineColor: { red: 0, green: 0, blue: 0, alpha: 1 },
-                        outlineWidth: 2,
-                        verticalOrigin: window.Cesium?.VerticalOrigin?.CENTER,
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    billboard: {
+                        image: rulerVertexDataUrl(idx + 1, '#22d3ee'),
+                        width: 28,
+                        height: 28,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        heightReference: Cesium?.HeightReference?.CLAMP_TO_GROUND
                     }
                 });
                 rulerOverlays.push(ent);
@@ -1410,13 +1454,17 @@
                     position: Cartesian3.fromDegrees((a.lon + b.lon) / 2, (a.lat + b.lat) / 2),
                     label: {
                         text,
-                        font: 'bold 11px sans-serif',
-                        fillColor: { red: 0.88, green: 0.95, blue: 0.99, alpha: 1 },
+                        font: 'bold 13px sans-serif',
+                        fillColor: { red: 0.94, green: 0.98, blue: 1, alpha: 1 },
                         outlineColor: { red: 0, green: 0, blue: 0, alpha: 1 },
                         outlineWidth: 3,
                         showBackground: true,
-                        backgroundColor: { red: 0.03, green: 0.18, blue: 0.28, alpha: 0.9 },
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                        backgroundColor: { red: 0.03, green: 0.18, blue: 0.28, alpha: 0.92 },
+                        backgroundPadding: Cesium?.Cartesian2
+                            ? new Cesium.Cartesian2(8, 5)
+                            : undefined,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        heightReference: Cesium?.HeightReference?.CLAMP_TO_GROUND
                     }
                 });
                 rulerOverlays.push(midEnt);
@@ -2111,7 +2159,7 @@
                 }
                 onAdd() {
                     this.div = document.createElement('div');
-                    this.div.className = 'fr-ruler-label';
+                    this.div.className = 'fr-ruler-label fr-flight-label';
                     const chip = document.createElement('div');
                     chip.className = 'fr-ruler-chip';
                     chip.style.borderColor = this.color || '#22d3ee';
@@ -2125,7 +2173,7 @@
                     const p = proj.fromLatLngToDivPixel(this.position);
                     if (!p) return;
                     this.div.style.left = p.x + 'px';
-                    this.div.style.top = (p.y - 22) + 'px';
+                    this.div.style.top = (p.y - 28) + 'px';
                 }
                 onRemove() {
                     if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
@@ -2135,10 +2183,33 @@
                     this.position = latLng;
                     this.draw();
                 }
+                setText(text, color) {
+                    this.text = text;
+                    if (color) this.color = color;
+                    const chip = this.div?.querySelector('.fr-ruler-chip');
+                    if (chip) {
+                        chip.textContent = text;
+                        if (color) chip.style.borderColor = color;
+                    }
+                }
             }
             const ov = new FrFlightLabel();
             ov.setMap(map);
             return ov;
+        }
+
+        function googlePlaneIcon(color, heading, isMe) {
+            return {
+                path: PLANE_SYMBOL_PATH,
+                fillColor: color || '#22d3ee',
+                fillOpacity: 1,
+                strokeColor: '#ffffff',
+                strokeWeight: 1.4,
+                strokeOpacity: 1,
+                scale: isMe ? 1.35 : 1.15,
+                rotation: Number.isFinite(heading) ? heading : 0,
+                anchor: new google.maps.Point(0, 0)
+            };
         }
 
         function upsertFlightMarker(id, flight, pos) {
@@ -2146,6 +2217,8 @@
             const color = flight.color || '#22d3ee';
             const callsign = flight.callsign || id.slice(0, 8);
             const isMe = id === CLIENT_ID;
+            const heading = Number.isFinite(pos.heading) ? pos.heading : (flight.heading || 0);
+            const labelText = (isMe ? '● ' : '') + callsign;
 
             if (mapType === 'google') {
                 let slot = flightMarkers[id];
@@ -2153,74 +2226,74 @@
                     const marker = new google.maps.Marker({
                         position: { lat: pos.lat, lng: pos.lon },
                         map,
-                        icon: {
-                            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                            scale: isMe ? 7 : 6,
-                            fillColor: color,
-                            fillOpacity: 1,
-                            strokeColor: '#fff',
-                            strokeWeight: 1.5,
-                            rotation: pos.heading || 0
-                        },
+                        icon: googlePlaneIcon(color, heading, isMe),
                         zIndex: 200,
-                        title: callsign
+                        title: callsign,
+                        optimized: false
                     });
                     const labelOv = createFlightCallsignOverlay(
                         new google.maps.LatLng(pos.lat, pos.lon),
-                        (isMe ? '● ' : '') + callsign,
+                        labelText,
                         color
                     );
                     flightMarkers[id] = { marker, labelOv };
-                    slot = flightMarkers[id];
                 } else {
                     slot.marker.setPosition({ lat: pos.lat, lng: pos.lon });
-                    slot.marker.setIcon({
-                        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                        scale: isMe ? 7 : 6,
-                        fillColor: color,
-                        fillOpacity: 1,
-                        strokeColor: '#fff',
-                        strokeWeight: 1.5,
-                        rotation: pos.heading || 0
-                    });
+                    slot.marker.setIcon(googlePlaneIcon(color, heading, isMe));
                     slot.labelOv?.setPos(new google.maps.LatLng(pos.lat, pos.lon));
+                    slot.labelOv?.setText?.(labelText, color);
                 }
                 return;
             }
 
             if (!Cartesian3) return;
+            const Cesium = window.Cesium;
             let slot = flightMarkers[id];
-            const rgba = hexToRgbA(color, 1);
+            const rotation = Cesium?.Math
+                ? Cesium.Math.toRadians(heading)
+                : (heading * Math.PI / 180);
             if (!slot) {
                 const entity = map.entities.add({
                     position: Cartesian3.fromDegrees(pos.lon, pos.lat),
-                    point: {
-                        pixelSize: isMe ? 16 : 14,
-                        color: rgba,
-                        outlineColor: { red: 1, green: 1, blue: 1, alpha: 1 },
-                        outlineWidth: 2
+                    billboard: {
+                        image: planeBillboardImage(color),
+                        width: isMe ? 44 : 38,
+                        height: isMe ? 44 : 38,
+                        rotation,
+                        alignedAxis: Cesium?.Cartesian3?.UNIT_Z,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        heightReference: Cesium?.HeightReference?.CLAMP_TO_GROUND
                     }
                 });
                 const labelEnt = map.entities.add({
                     position: Cartesian3.fromDegrees(pos.lon, pos.lat),
                     label: {
-                        text: (isMe ? '● ' : '') + callsign,
-                        font: 'bold 11px sans-serif',
+                        text: labelText,
+                        font: 'bold 12px sans-serif',
                         fillColor: { red: 1, green: 1, blue: 1, alpha: 1 },
                         outlineColor: { red: 0, green: 0, blue: 0, alpha: 1 },
                         outlineWidth: 3,
-                        pixelOffset: window.Cesium?.Cartesian2
-                            ? new window.Cesium.Cartesian2(0, -18)
+                        pixelOffset: Cesium?.Cartesian2
+                            ? new Cesium.Cartesian2(0, -26)
                             : undefined,
                         showBackground: true,
-                        backgroundColor: { red: 0.03, green: 0.18, blue: 0.28, alpha: 0.85 },
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                        backgroundColor: { red: 0.03, green: 0.18, blue: 0.28, alpha: 0.88 },
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        heightReference: Cesium?.HeightReference?.CLAMP_TO_GROUND
                     }
                 });
-                flightMarkers[id] = { entity, labelEnt };
+                flightMarkers[id] = { entity, labelEnt, color };
             } else {
                 slot.entity.position = Cartesian3.fromDegrees(pos.lon, pos.lat);
+                if (slot.entity.billboard) {
+                    slot.entity.billboard.rotation = rotation;
+                    if (slot.color !== color) {
+                        slot.entity.billboard.image = planeBillboardImage(color);
+                        slot.color = color;
+                    }
+                }
                 slot.labelEnt.position = Cartesian3.fromDegrees(pos.lon, pos.lat);
+                if (slot.labelEnt.label) slot.labelEnt.label.text = labelText;
             }
             map.scene?.requestRender?.();
         }
