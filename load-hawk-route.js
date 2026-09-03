@@ -1,8 +1,8 @@
 // Короткий лоадер HAWKROUTE v2 — встав УСЕ в консоль
 (async () => {
     const urls = [
-        'https://raw.githubusercontent.com/Smertnik616/my-script/4d45e3e/hawk-route.js?t=' + Date.now(),
-        'https://cdn.jsdelivr.net/gh/Smertnik616/my-script@4d45e3e/hawk-route.js?t=' + Date.now()
+        'https://raw.githubusercontent.com/Smertnik616/my-script/0917d3a/hawk-route.js?t=' + Date.now(),
+        'https://cdn.jsdelivr.net/gh/Smertnik616/my-script@0917d3a/hawk-route.js?t=' + Date.now()
     ];
     document.getElementById('hawk-route-ui')?.remove();
     let code = '';
