@@ -4476,7 +4476,7 @@
             const blob = new Blob([content], { type: mime });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `falcon_route_poi_${date}.${ext}`;
+            a.download = `hawk_route_poi_${date}.${ext}`;
             a.click();
             URL.revokeObjectURL(a.href);
         };
