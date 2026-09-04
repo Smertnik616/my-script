@@ -1,0 +1,20 @@
+{
+  "licenses": {
+    "FR-DEMO1": {
+      "allowed": true,
+      "name": "Тест 1",
+      "room": "falcon-route-default",
+      "note": "приклад ключа"
+    },
+    "FR-DEMO2": {
+      "allowed": true,
+      "name": "Тест 2",
+      "room": "falcon-route-default"
+    },
+    "FR-BANNED": {
+      "allowed": false,
+      "name": "Заблокований",
+      "room": "falcon-route-default"
+    }
+  }
+}

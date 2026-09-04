@@ -1,0 +1,22 @@
+{
+  "rules": {
+    "licenses": {
+      "$key": {
+        ".read": true,
+        ".write": false
+      }
+    },
+    "rooms": {
+      "$room": {
+        "points": {
+          ".read": true,
+          ".write": true
+        },
+        "flights": {
+          ".read": true,
+          ".write": true
+        }
+      }
+    }
+  }
+}

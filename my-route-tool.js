@@ -2,14 +2,230 @@
     'use strict';
 
     // ========== Конфіг Firebase ==========
-    const DB_URL = 'https://script-poi-default-rtdb.europe-west1.firebasedatabase.app/rooms/falcon-route-default/points.json';
-    const FLIGHTS_URL = 'https://script-poi-default-rtdb.europe-west1.firebasedatabase.app/rooms/falcon-route-default/flights.json';
-    const FIREBASE_ENABLED = !DB_URL.includes('ВАШ_ПРОЄКТ');
+    const FIREBASE_ROOT = 'https://script-poi-default-rtdb.europe-west1.firebasedatabase.app';
+    const DEFAULT_ROOM = 'falcon-route-default';
+    const LICENSE_KEY_STORAGE = 'falcon_route_license_v1';
+    const LICENSE_META_STORAGE = 'falcon_route_license_meta_v1';
+    const LICENSE_RECHECK_MS = 60000;
+
+    let activeLicenseKey = '';
+    let activeLicenseMeta = null;
+    let licenseWatchTimer = 0;
+    let accessRevoked = false;
+
+    function roomPointsUrl(room) {
+        return `${FIREBASE_ROOT}/rooms/${encodeURIComponent(room)}/points.json`;
+    }
+    function roomFlightsUrl(room) {
+        return `${FIREBASE_ROOT}/rooms/${encodeURIComponent(room)}/flights.json`;
+    }
+    function licenseRecordUrl(key) {
+        return `${FIREBASE_ROOT}/licenses/${encodeURIComponent(key)}.json`;
+    }
+
+    let DB_URL = roomPointsUrl(DEFAULT_ROOM);
+    let FLIGHTS_URL = roomFlightsUrl(DEFAULT_ROOM);
+    const FIREBASE_ENABLED = !FIREBASE_ROOT.includes('ВАШ_ПРОЄКТ');
     const STORAGE_KEY = 'cesium_falcon_route_points_v1';
     const SETTINGS_KEY = 'cesium_falcon_route_settings_v1';
     const CORRIDOR_KEY = 'cesium_falcon_route_corridor_v1';
     const CLIENT_KEY = 'falcon_route_client_id_v1';
     const MAX_BOOT_ATTEMPTS = 40;
+
+    function normalizeLicenseKey(raw) {
+        return String(raw || '')
+            .trim()
+            .toUpperCase()
+            .replace(/\s+/g, '')
+            .replace(/[^A-Z0-9_-]/g, '');
+    }
+
+    function getSavedLicenseKey() {
+        try { return normalizeLicenseKey(localStorage.getItem(LICENSE_KEY_STORAGE) || ''); }
+        catch (_) { return ''; }
+    }
+
+    function saveLicenseKey(key) {
+        try { localStorage.setItem(LICENSE_KEY_STORAGE, key); } catch (_) { /* ignore */ }
+    }
+
+    function clearLicenseKey() {
+        try {
+            localStorage.removeItem(LICENSE_KEY_STORAGE);
+            localStorage.removeItem(LICENSE_META_STORAGE);
+        } catch (_) { /* ignore */ }
+        activeLicenseKey = '';
+        activeLicenseMeta = null;
+    }
+
+    function applyLicenseRoom(meta) {
+        const room = String(meta?.room || DEFAULT_ROOM).trim() || DEFAULT_ROOM;
+        DB_URL = roomPointsUrl(room);
+        FLIGHTS_URL = roomFlightsUrl(room);
+        activeLicenseMeta = { ...(meta || {}), room };
+        try { localStorage.setItem(LICENSE_META_STORAGE, JSON.stringify(activeLicenseMeta)); } catch (_) { /* ignore */ }
+    }
+
+    function isLicensePayloadValid(data) {
+        if (!data || typeof data !== 'object') return { ok: false, reason: 'Ключ не знайдено' };
+        if (data.allowed === false || data.banned === true) {
+            return { ok: false, reason: 'Доступ заборонено (бан)' };
+        }
+        if (data.allowed !== true) {
+            return { ok: false, reason: 'Ключ не активовано' };
+        }
+        if (data.expiresAt) {
+            const exp = Date.parse(data.expiresAt) || Number(data.expiresAt);
+            if (Number.isFinite(exp) && Date.now() > exp) {
+                return { ok: false, reason: 'Термін дії ключа закінчився' };
+            }
+        }
+        return { ok: true, reason: '' };
+    }
+
+    async function fetchLicense(key) {
+        const url = licenseRecordUrl(key);
+        const res = await fetch(url, { cache: 'no-store' });
+        if (res.status === 404) return null;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        return data;
+    }
+
+    function showAccessBlocked(message) {
+        accessRevoked = true;
+        try {
+            if (licenseWatchTimer) clearInterval(licenseWatchTimer);
+            licenseWatchTimer = 0;
+        } catch (_) { /* ignore */ }
+        document.getElementById('falcon-route-ui')?.remove();
+        document.getElementById('falcon-route-tip')?.remove();
+        document.getElementById('falcon-route-license')?.remove();
+        document.getElementById('falcon-route-blocked')?.remove();
+        const box = document.createElement('div');
+        box.id = 'falcon-route-blocked';
+        box.style.cssText = 'position:fixed;inset:0;z-index:99999999;background:rgba(8,10,16,.72);display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif';
+        box.innerHTML = `
+            <div style="width:min(420px,92vw);background:#151925;border:1px solid #334155;border-radius:14px;padding:18px 16px;color:#e2e8f0;box-shadow:0 20px 50px rgba(0,0,0,.55)">
+                <div style="font-weight:750;font-size:16px;margin-bottom:8px;color:#fca5a5">⛔ Доступ закрито</div>
+                <div style="font-size:13px;line-height:1.45;color:#cbd5e1;margin-bottom:14px">${message || 'Немає дозволу на використання FalconRoute.'}</div>
+                <button id="fr-license-retry" style="width:100%;height:38px;border:0;border-radius:10px;background:#0ea5e9;color:#082f49;font-weight:750;cursor:pointer">Ввести інший ключ</button>
+            </div>`;
+        document.body.appendChild(box);
+        box.querySelector('#fr-license-retry').onclick = () => {
+            clearLicenseKey();
+            box.remove();
+            ensureLicensed().then((ok) => { if (ok) boot(0); });
+        };
+    }
+
+    function promptLicenseKey(prefill, errorText) {
+        return new Promise((resolve) => {
+            document.getElementById('falcon-route-license')?.remove();
+            const wrap = document.createElement('div');
+            wrap.id = 'falcon-route-license';
+            wrap.style.cssText = 'position:fixed;inset:0;z-index:99999999;background:rgba(8,10,16,.72);display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif';
+            wrap.innerHTML = `
+                <div style="width:min(420px,92vw);background:#151925;border:1px solid #334155;border-radius:14px;padding:18px 16px;color:#e2e8f0;box-shadow:0 20px 50px rgba(0,0,0,.55)">
+                    <div style="font-weight:750;font-size:16px;margin-bottom:6px;color:#7dd3fc">🦅 FalconRoute — доступ</div>
+                    <div style="font-size:12px;line-height:1.45;color:#94a3b8;margin-bottom:12px">Введи ключ доступу, який тобі видали. Без валідного ключа скрипт не запуститься.</div>
+                    <label style="display:block;font-size:11px;color:#94a3b8;margin-bottom:4px">Ключ</label>
+                    <input id="fr-license-input" type="text" autocomplete="off" spellcheck="false"
+                        placeholder="Наприклад FR-7K2M"
+                        style="width:100%;height:38px;border-radius:10px;border:1px solid #334155;background:#0b0e14;color:#fff;padding:0 10px;margin-bottom:8px;box-sizing:border-box;font-size:14px;letter-spacing:.04em" />
+                    <div id="fr-license-err" style="min-height:18px;font-size:12px;color:#f87171;margin-bottom:10px"></div>
+                    <button id="fr-license-ok" style="width:100%;height:38px;border:0;border-radius:10px;background:#0ea5e9;color:#082f49;font-weight:750;cursor:pointer">Увійти</button>
+                </div>`;
+            document.body.appendChild(wrap);
+            const input = wrap.querySelector('#fr-license-input');
+            const err = wrap.querySelector('#fr-license-err');
+            const btn = wrap.querySelector('#fr-license-ok');
+            if (prefill) input.value = prefill;
+            if (errorText) err.textContent = errorText;
+            const submit = () => {
+                const key = normalizeLicenseKey(input.value);
+                if (!key) {
+                    err.textContent = 'Введи ключ';
+                    return;
+                }
+                wrap.remove();
+                resolve(key);
+            };
+            btn.onclick = submit;
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') submit();
+            });
+            setTimeout(() => input.focus(), 50);
+        });
+    }
+
+    async function validateAndActivateLicense(key) {
+        const data = await fetchLicense(key);
+        const check = isLicensePayloadValid(data);
+        if (!check.ok) {
+            return { ok: false, reason: check.reason };
+        }
+        activeLicenseKey = key;
+        saveLicenseKey(key);
+        applyLicenseRoom(data);
+        accessRevoked = false;
+        return { ok: true, data };
+    }
+
+    async function ensureLicensed() {
+        if (!FIREBASE_ENABLED) return true;
+        let key = getSavedLicenseKey();
+        let lastError = '';
+        for (;;) {
+            if (!key) {
+                key = await promptLicenseKey('', lastError);
+            }
+            try {
+                const res = await validateAndActivateLicense(key);
+                if (res.ok) {
+                    console.log('[FALCONROUTE] license ok:', key, activeLicenseMeta?.name || '');
+                    startLicenseWatch();
+                    return true;
+                }
+                lastError = res.reason || 'Невалідний ключ';
+                clearLicenseKey();
+                key = '';
+            } catch (err) {
+                lastError = 'Не вдалося перевірити ключ (мережа / Firebase). Спробуй ще.';
+                console.warn('[FALCONROUTE] license check failed', err);
+                key = await promptLicenseKey(key, lastError);
+            }
+        }
+    }
+
+    async function recheckLicense() {
+        if (!FIREBASE_ENABLED || accessRevoked || !activeLicenseKey) return;
+        try {
+            const data = await fetchLicense(activeLicenseKey);
+            const check = isLicensePayloadValid(data);
+            if (!check.ok) {
+                clearLicenseKey();
+                showAccessBlocked(check.reason);
+                return;
+            }
+            applyLicenseRoom(data);
+            const el = document.getElementById('fr-license-status');
+            if (el) {
+                const who = data.name ? ` · ${data.name}` : '';
+                el.textContent = `Ключ: ${activeLicenseKey}${who}`;
+            }
+        } catch (err) {
+            console.warn('[FALCONROUTE] license recheck failed', err);
+        }
+    }
+
+    function startLicenseWatch() {
+        if (licenseWatchTimer) clearInterval(licenseWatchTimer);
+        licenseWatchTimer = setInterval(recheckLicense, LICENSE_RECHECK_MS);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') recheckLicense();
+        });
+    }
 
     function getClientId() {
         try {
@@ -463,7 +679,7 @@
         };
     }
 
-    const FR_BUILD = 'range-text-20';
+    const FR_BUILD = 'license-gate-21';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1409,6 +1625,10 @@
             </div>
             <div class="fr-footer">
                 <div class="fr-sync" id="fr-sync">${FIREBASE_ENABLED ? 'Firebase: підключення…' : 'Локальний режим (без Firebase)'}</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px">
+                    <div class="fr-label" id="fr-license-status" style="margin:0;opacity:.9">Ключ: ${activeLicenseKey || '—'}${activeLicenseMeta?.name ? ' · ' + activeLicenseMeta.name : ''}</div>
+                    <button type="button" class="fr-btn" id="fr-license-logout" style="min-height:28px !important;padding:4px 8px !important;font-size:10px !important">Змінити ключ</button>
+                </div>
             </div>
         `;
 
@@ -1421,6 +1641,15 @@
         const mainBody = document.getElementById('fr-main');
         const footerEl = panel.querySelector('.fr-footer');
         const toggleBtn = document.getElementById('fr-toggle');
+        document.getElementById('fr-license-logout')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!confirm('Змінити ключ доступу? Скрипт перезапустить перевірку.')) return;
+            clearLicenseKey();
+            panel.remove();
+            try { if (licenseWatchTimer) clearInterval(licenseWatchTimer); } catch (_) { /* ignore */ }
+            ensureLicensed().then((ok) => { if (ok) location.reload(); });
+        });
         toggleBtn.onclick = (e) => {
             e.stopPropagation();
             e.preventDefault();
@@ -4561,5 +4790,9 @@
 
     document.getElementById('falcon-route-ui')?.remove();
     document.getElementById('falcon-route-tip')?.remove();
-    boot(0);
+    document.getElementById('falcon-route-license')?.remove();
+    document.getElementById('falcon-route-blocked')?.remove();
+    ensureLicensed().then((ok) => {
+        if (ok) boot(0);
+    });
 })();
