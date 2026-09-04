@@ -108,10 +108,11 @@
         box.innerHTML = `
             <div style="width:min(420px,92vw);background:#151925;border:1px solid #334155;border-radius:14px;padding:18px 16px;color:#e2e8f0;box-shadow:0 20px 50px rgba(0,0,0,.55)">
                 <div style="font-weight:750;font-size:16px;margin-bottom:8px;color:#fca5a5">⛔ Доступ закрито</div>
-                <div style="font-size:13px;line-height:1.45;color:#cbd5e1;margin-bottom:14px">${message || 'Немає дозволу на використання FalconRoute.'}</div>
+                <div id="fr-blocked-msg" style="font-size:13px;line-height:1.45;color:#cbd5e1;margin-bottom:14px"></div>
                 <button id="fr-license-retry" style="width:100%;height:38px;border:0;border-radius:10px;background:#0ea5e9;color:#082f49;font-weight:750;cursor:pointer">Ввести інший ключ</button>
             </div>`;
         document.body.appendChild(box);
+        box.querySelector('#fr-blocked-msg').textContent = message || 'Немає дозволу на використання FalconRoute.';
         box.querySelector('#fr-license-retry').onclick = () => {
             clearLicenseKey();
             box.remove();
@@ -679,7 +680,7 @@
         };
     }
 
-    const FR_BUILD = 'license-gate-21';
+    const FR_BUILD = 'aim-target-22';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1076,6 +1077,11 @@
         let labelOverlays = [];
         let corridorOverlays = [];
         let rulerOverlays = [];
+        let aimTarget = null; // { lat, lon } — ціль на карті
+        let aimOverlays = [];
+        let aimTrack = null;
+        let isAimPlaceMode = false;
+        let aimPlaceListener = null;
         let isPickMode = false;
         let isCoordPickMode = false;
         let isCorridorMode = false;
@@ -1398,14 +1404,14 @@
                     background: rgba(8,47,73,.92); border: 1px solid rgba(125,211,252,.85);
                     box-shadow: 0 2px 8px rgba(0,0,0,.45); text-shadow: none;
                 }
-                .fr-range-label .fr-ruler-chip {
+                .fr-aim-label .fr-ruler-chip {
                     font-size: 12px; padding: 0; border-radius: 0;
-                    background: transparent; color: #ede9fe;
+                    background: transparent; color: #ffedd5;
                     border: none; box-shadow: none; font-weight: 700;
                     text-shadow:
-                        0 0 4px rgba(46,16,101,.95),
-                        -1px -1px 0 #2e1065, 1px -1px 0 #2e1065,
-                        -1px 1px 0 #2e1065, 1px 1px 0 #2e1065,
+                        0 0 4px rgba(124,45,18,.95),
+                        -1px -1px 0 #7c2d12, 1px -1px 0 #7c2d12,
+                        -1px 1px 0 #7c2d12, 1px 1px 0 #7c2d12,
                         0 1px 3px rgba(0,0,0,.65);
                 }
             </style>
@@ -1425,6 +1431,7 @@
                         <button type="button" class="fr-qbtn" id="fr-q-pick" title="Додати точку кліком на карті" data-fr-click="fr-pick" data-fr-acc="points">🎯</button>
                         <button type="button" class="fr-qbtn" id="fr-q-mgrs" title="Скопіювати MGRS з карти" data-fr-click="fr-coord-pick" data-fr-acc="coords">📋</button>
                         <button type="button" class="fr-qbtn" id="fr-q-ruler" title="Малювати лінійку" data-fr-click="fr-ruler" data-fr-acc="ruler">📏</button>
+                        <button type="button" class="fr-qbtn" id="fr-q-aim" title="Поставити ціль (лінія від борта)" data-fr-click="fr-aim-place" data-fr-acc="ruler">◎</button>
                         <button type="button" class="fr-qbtn" id="fr-q-corridor" title="Малювати коридор" data-fr-click="fr-corridor" data-fr-acc="corridor">🛤</button>
                         <button type="button" class="fr-qbtn" id="fr-q-copy" title="Скопіювати видимі координати" data-fr-click="fr-copy" data-fr-acc="coords">📤</button>
                         <button type="button" class="fr-qbtn" id="fr-q-place" title="Поставити борт" data-fr-click="fr-flight-place" data-fr-acc="flight">📍</button>
@@ -1528,6 +1535,12 @@
                             <button class="fr-btn fr-btn-pick" id="fr-ruler">📏 Малювати</button>
                             <button class="fr-btn" id="fr-ruler-toggle">👁 Сховати</button>
                         </div>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-pick" id="fr-aim-place">🎯 Ціль</button>
+                            <button class="fr-btn fr-btn-danger" id="fr-aim-clear">Скинути ціль</button>
+                        </div>
+                        <div class="fr-hint">«Ціль» — постав точку на карті; від твого борта піде лінія з відстанню та часом (за швидкістю лінійки).</div>
+                        <div class="fr-status muted" id="fr-aim-status">Ціль не задана</div>
                         <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ruler-clear">Скинути лінійку</button>
                         <div class="fr-status muted" id="fr-ruler-status">Лінійка не задана</div>
                     </div>
@@ -2072,6 +2085,334 @@
                 });
             }
             corridorOverlays = [];
+        }
+
+        function clearAimOverlays() {
+            try {
+                if (mapType === 'google') {
+                    aimOverlays.forEach(o => {
+                        try { o.setMap(null); } catch (_) { /* ignore */ }
+                    });
+                } else {
+                    aimOverlays.forEach(ent => {
+                        try { map.entities.remove(ent); } catch (_) { /* ignore */ }
+                    });
+                }
+            } catch (_) { /* ignore */ }
+            aimOverlays = [];
+            aimTrack = null;
+        }
+
+        function setAimStatus(text, muted = true) {
+            const el = document.getElementById('fr-aim-status');
+            if (!el) return;
+            el.textContent = text || '';
+            el.classList.toggle('muted', !!muted);
+        }
+
+        function stopAimPlaceMode() {
+            isAimPlaceMode = false;
+            const btn = document.getElementById('fr-aim-place');
+            if (btn) {
+                btn.classList.remove('active');
+                btn.textContent = '🎯 Ціль';
+            }
+            if (aimPlaceListener) {
+                if (mapType === 'google') google.maps.event.removeListener(aimPlaceListener);
+                else if (map.canvas) map.canvas.removeEventListener('click', aimPlaceListener);
+                aimPlaceListener = null;
+            }
+            syncQuickBar();
+        }
+
+        function clearAimTarget() {
+            stopAimPlaceMode();
+            aimTarget = null;
+            clearAimOverlays();
+            setAimStatus('Ціль не задана', true);
+        }
+
+        function createGoogleAimLabel(position, text, bearingDegVal) {
+            let rot = Number.isFinite(bearingDegVal) ? bearingDegVal : 0;
+            if (rot > 90 && rot < 270) rot = (rot + 180) % 360;
+            class FrAimLabel extends google.maps.OverlayView {
+                constructor() {
+                    super();
+                    this.position = position;
+                    this.div = null;
+                    this.rot = rot;
+                    this.text = text || '';
+                }
+                onAdd() {
+                    this.div = document.createElement('div');
+                    this.div.className = 'fr-ruler-label fr-aim-label';
+                    const chip = document.createElement('div');
+                    chip.className = 'fr-ruler-chip';
+                    chip.textContent = this.text;
+                    this.div.appendChild(chip);
+                    this.getPanes().floatPane.appendChild(this.div);
+                }
+                draw() {
+                    const proj = this.getProjection();
+                    if (!proj || !this.div) return;
+                    const p = proj.fromLatLngToDivPixel(this.position);
+                    if (!p) return;
+                    this.div.style.left = p.x + 'px';
+                    this.div.style.top = p.y + 'px';
+                    this.div.style.transform =
+                        `translate(-50%, -50%) rotate(${this.rot}deg) translate(0, -12px)`;
+                }
+                onRemove() {
+                    if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
+                    this.div = null;
+                }
+                setPose(latLng, bearing) {
+                    this.position = latLng;
+                    let r = Number.isFinite(bearing) ? bearing : this.rot;
+                    if (r > 90 && r < 270) r = (r + 180) % 360;
+                    this.rot = r;
+                    this.draw();
+                }
+                setLabel(t) {
+                    this.text = t || '';
+                    const chip = this.div?.querySelector('.fr-ruler-chip');
+                    if (chip) chip.textContent = this.text;
+                }
+            }
+            const ov = new FrAimLabel();
+            ov.setMap(map);
+            return ov;
+        }
+
+        function updateAimLine(fromPos) {
+            if (!aimTarget) {
+                clearAimOverlays();
+                return;
+            }
+            const speed = getRulerSpeed();
+            const statusElReady = true;
+
+            if (!fromPos) {
+                // Показуємо лише маркер цілі без лінії
+                if (mapType === 'google') {
+                    if (!aimOverlays.length) {
+                        aimOverlays.push(new google.maps.Marker({
+                            position: { lat: aimTarget.lat, lng: aimTarget.lon },
+                            map,
+                            title: 'Ціль',
+                            zIndex: 195,
+                            icon: {
+                                path: google.maps.SymbolPath.CIRCLE,
+                                scale: 7,
+                                fillColor: '#f97316',
+                                fillOpacity: 0.95,
+                                strokeColor: '#fff7ed',
+                                strokeWeight: 2
+                            }
+                        }));
+                    } else if (aimOverlays[0]?.setPosition) {
+                        aimOverlays[0].setPosition({ lat: aimTarget.lat, lng: aimTarget.lon });
+                        // прибрати лінію/лейбл якщо були
+                        while (aimOverlays.length > 1) {
+                            try { aimOverlays.pop().setMap(null); } catch (_) { /* ignore */ }
+                        }
+                    }
+                } else if (Cartesian3) {
+                    const Cesium = window.Cesium;
+                    const tip = Cartesian3.fromDegrees(aimTarget.lon, aimTarget.lat);
+                    if (!aimTrack) {
+                        aimTrack = { from: tip, to: tip, mid: tip, text: '' };
+                        aimOverlays.push(map.entities.add({
+                            position: tip,
+                            point: {
+                                pixelSize: 12,
+                                color: toCesiumColor('#f97316'),
+                                outlineColor: toCesiumColor('#fff7ed'),
+                                outlineWidth: 2,
+                                disableDepthTestDistance: Number.POSITIVE_INFINITY
+                            }
+                        }));
+                    } else {
+                        aimTrack.to = tip;
+                        if (aimOverlays[0]) aimOverlays[0].position = tip;
+                    }
+                    map.scene?.requestRender?.();
+                }
+                if (statusElReady) {
+                    setAimStatus('Ціль стоїть · постав борт, щоб бачити лінію / відстань', true);
+                }
+                return;
+            }
+
+            const distM = haversineM(fromPos.lat, fromPos.lon, aimTarget.lat, aimTarget.lon);
+            const eta = formatTravelTime(distM, speed);
+            const labelText = `${formatDistanceKm(distM)} · ${eta}`;
+            const mid = {
+                lat: (fromPos.lat + aimTarget.lat) / 2,
+                lon: (fromPos.lon + aimTarget.lon) / 2
+            };
+            const brg = bearingDeg(fromPos, aimTarget);
+            setAimStatus(`До цілі: ${formatDistanceKm(distM)} · ETA ${eta} · ${speed} км/год`, false);
+
+            if (mapType === 'google') {
+                const path = [
+                    { lat: fromPos.lat, lng: fromPos.lon },
+                    { lat: aimTarget.lat, lng: aimTarget.lon }
+                ];
+                const midLL = new google.maps.LatLng(mid.lat, mid.lon);
+                if (aimOverlays.length < 3) {
+                    clearAimOverlays();
+                    aimOverlays.push(new google.maps.Marker({
+                        position: { lat: aimTarget.lat, lng: aimTarget.lon },
+                        map,
+                        title: 'Ціль',
+                        zIndex: 195,
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 7,
+                            fillColor: '#f97316',
+                            fillOpacity: 0.95,
+                            strokeColor: '#fff7ed',
+                            strokeWeight: 2
+                        }
+                    }));
+                    aimOverlays.push(new google.maps.Polyline({
+                        path,
+                        geodesic: true,
+                        strokeColor: '#f97316',
+                        strokeOpacity: 0.9,
+                        strokeWeight: 2,
+                        map,
+                        zIndex: 194,
+                        clickable: false,
+                        icons: [{
+                            icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.9, scale: 2 },
+                            offset: '0',
+                            repeat: '10px'
+                        }]
+                    }));
+                    aimOverlays.push(createGoogleAimLabel(midLL, labelText, brg));
+                } else {
+                    aimOverlays[0].setPosition({ lat: aimTarget.lat, lng: aimTarget.lon });
+                    aimOverlays[1].setPath(path);
+                    if (aimOverlays[2]?.setPose) {
+                        aimOverlays[2].setPose(midLL, brg);
+                        aimOverlays[2].setLabel(labelText);
+                    }
+                }
+                return;
+            }
+
+            if (!Cartesian3) return;
+            const Cesium = window.Cesium;
+            if (!aimTrack || aimOverlays.length < 3) {
+                clearAimOverlays();
+                aimTrack = {
+                    from: Cartesian3.fromDegrees(fromPos.lon, fromPos.lat),
+                    to: Cartesian3.fromDegrees(aimTarget.lon, aimTarget.lat),
+                    mid: Cartesian3.fromDegrees(mid.lon, mid.lat),
+                    text: labelText
+                };
+                aimOverlays.push(map.entities.add({
+                    position: Cesium?.CallbackProperty
+                        ? new Cesium.CallbackProperty(() => aimTrack.to, false)
+                        : aimTrack.to,
+                    point: {
+                        pixelSize: 12,
+                        color: toCesiumColor('#f97316'),
+                        outlineColor: toCesiumColor('#fff7ed'),
+                        outlineWidth: 2,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                }));
+                aimOverlays.push(map.entities.add({
+                    polyline: {
+                        positions: Cesium?.CallbackProperty
+                            ? new Cesium.CallbackProperty(() => [aimTrack.from, aimTrack.to], false)
+                            : [aimTrack.from, aimTrack.to],
+                        width: 2,
+                        material: toCesiumColor({ red: 0.98, green: 0.45, blue: 0.09, alpha: 0.9 })
+                    }
+                }));
+                aimOverlays.push(map.entities.add({
+                    position: Cesium?.CallbackProperty
+                        ? new Cesium.CallbackProperty(() => aimTrack.mid, false)
+                        : aimTrack.mid,
+                    label: {
+                        text: Cesium?.CallbackProperty
+                            ? new Cesium.CallbackProperty(() => aimTrack.text, false)
+                            : labelText,
+                        font: 'bold 12px sans-serif',
+                        fillColor: toCesiumColor('#ffedd5'),
+                        outlineColor: toCesiumColor('#7c2d12'),
+                        outlineWidth: 4,
+                        style: Cesium?.LabelStyle?.FILL_AND_OUTLINE,
+                        showBackground: false,
+                        pixelOffset: Cesium?.Cartesian2
+                            ? new Cesium.Cartesian2(0, -14)
+                            : undefined,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                }));
+            } else {
+                aimTrack.from = Cartesian3.fromDegrees(fromPos.lon, fromPos.lat);
+                aimTrack.to = Cartesian3.fromDegrees(aimTarget.lon, aimTarget.lat);
+                aimTrack.mid = Cartesian3.fromDegrees(mid.lon, mid.lat);
+                aimTrack.text = labelText;
+            }
+            map.scene?.requestRender?.();
+        }
+
+        function beginAimPlace() {
+            if (isPickMode) stopPickMode();
+            if (isCoordPickMode) stopCoordPickMode();
+            if (isCorridorMode) stopCorridorMode(false);
+            if (isRulerMode) stopRulerMode();
+            stopAircraftModes();
+            if (isAttachPickMode) {
+                clearAttachPickListener();
+                updateAttachBtn();
+            }
+
+            if (isAimPlaceMode) {
+                stopAimPlaceMode();
+                setAimStatus(aimTarget ? 'Ціль стоїть на карті' : 'Ціль не задана', !aimTarget);
+                return;
+            }
+
+            isAimPlaceMode = true;
+            const btn = document.getElementById('fr-aim-place');
+            if (btn) {
+                btn.classList.add('active');
+                btn.textContent = '👆 Клацни ціль…';
+            }
+            setAimStatus('Клацни на карті, куди ставити ціль', false);
+            syncQuickBar();
+
+            const onPick = (lat, lon) => {
+                aimTarget = { lat, lon };
+                stopAimPlaceMode();
+                const from = myFlight?.active
+                    ? (resolveFlightPos(myFlight) || { lat: myFlight.lat, lon: myFlight.lon })
+                    : null;
+                updateAimLine(from ? { lat: from.lat, lon: from.lon } : null);
+                startFlightLoop();
+            };
+
+            if (mapType === 'google') {
+                aimPlaceListener = map.addListener('click', (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                });
+            } else if (map.canvas) {
+                aimPlaceListener = (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                };
+                map.canvas.addEventListener('click', aimPlaceListener);
+            }
         }
 
         function clearRulerOverlays() {
@@ -2834,6 +3175,7 @@
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
             if (isCoordPickMode) stopCoordPickMode();
+            if (isAimPlaceMode) stopAimPlaceMode();
             stopAircraftModes();
             if (isPickMode) {
                 stopPickMode();
@@ -2874,6 +3216,7 @@
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
             if (isPickMode) stopPickMode();
+            if (isAimPlaceMode) stopAimPlaceMode();
             stopAircraftModes();
             if (isCoordPickMode) {
                 stopCoordPickMode();
@@ -2907,6 +3250,7 @@
             if (isPickMode) stopPickMode();
             if (isCoordPickMode) stopCoordPickMode();
             if (isRulerMode) stopRulerMode();
+            if (isAimPlaceMode) stopAimPlaceMode();
             stopAircraftModes();
 
             if (isCorridorMode) {
@@ -2963,6 +3307,7 @@
             if (isPickMode) stopPickMode();
             if (isCoordPickMode) stopCoordPickMode();
             if (isCorridorMode) stopCorridorMode(false);
+            if (isAimPlaceMode) stopAimPlaceMode();
             stopAircraftModes();
 
             if (isRulerMode) {
@@ -3000,6 +3345,9 @@
             }
         };
 
+        document.getElementById('fr-aim-place').onclick = () => beginAimPlace();
+        document.getElementById('fr-aim-clear').onclick = () => clearAimTarget();
+
         document.getElementById('fr-ruler-clear').onclick = () => {
             if (isRulerMode) stopRulerMode();
             rulerPoints = [];
@@ -3036,6 +3384,12 @@
         });
         document.getElementById('fr-ruler-speed').addEventListener('input', () => {
             renderRuler();
+            if (aimTarget) {
+                const from = myFlight?.active
+                    ? (resolveFlightPos(myFlight) || { lat: myFlight.lat, lon: myFlight.lon })
+                    : null;
+                updateAimLine(from ? { lat: from.lat, lon: from.lon } : null);
+            }
         });
         document.getElementById('fr-ruler-color').addEventListener('input', () => {
             saveSettings();
@@ -3217,6 +3571,7 @@
                 ['fr-q-pick', 'fr-pick'],
                 ['fr-q-mgrs', 'fr-coord-pick'],
                 ['fr-q-ruler', 'fr-ruler'],
+                ['fr-q-aim', 'fr-aim-place'],
                 ['fr-q-corridor', 'fr-corridor'],
                 ['fr-q-place', 'fr-flight-place'],
                 ['fr-q-fly', 'fr-flight-goto'],
@@ -4422,6 +4777,9 @@
             });
 
             updateDistancesPanel(myPos);
+            if (aimTarget) {
+                updateAimLine(myPos || null);
+            }
             flightRaf = requestAnimationFrame(tickFlights);
         }
 
