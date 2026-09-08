@@ -680,7 +680,7 @@
         };
     }
 
-    const FR_BUILD = 'aim-target-22';
+    const FR_BUILD = 'aim-label-h-23';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -2132,15 +2132,12 @@
             setAimStatus('Ціль не задана', true);
         }
 
-        function createGoogleAimLabel(position, text, bearingDegVal) {
-            let rot = Number.isFinite(bearingDegVal) ? bearingDegVal : 0;
-            if (rot > 90 && rot < 270) rot = (rot + 180) % 360;
+        function createGoogleAimLabel(position, text) {
             class FrAimLabel extends google.maps.OverlayView {
                 constructor() {
                     super();
                     this.position = position;
                     this.div = null;
-                    this.rot = rot;
                     this.text = text || '';
                 }
                 onAdd() {
@@ -2159,18 +2156,15 @@
                     if (!p) return;
                     this.div.style.left = p.x + 'px';
                     this.div.style.top = p.y + 'px';
-                    this.div.style.transform =
-                        `translate(-50%, -50%) rotate(${this.rot}deg) translate(0, -12px)`;
+                    // Завжди горизонтально (читабельно), над серединою лінії
+                    this.div.style.transform = 'translate(-50%, calc(-100% - 6px))';
                 }
                 onRemove() {
                     if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
                     this.div = null;
                 }
-                setPose(latLng, bearing) {
+                setPose(latLng) {
                     this.position = latLng;
-                    let r = Number.isFinite(bearing) ? bearing : this.rot;
-                    if (r > 90 && r < 270) r = (r + 180) % 360;
-                    this.rot = r;
                     this.draw();
                 }
                 setLabel(t) {
@@ -2251,7 +2245,6 @@
                 lat: (fromPos.lat + aimTarget.lat) / 2,
                 lon: (fromPos.lon + aimTarget.lon) / 2
             };
-            const brg = bearingDeg(fromPos, aimTarget);
             setAimStatus(`До цілі: ${formatDistanceKm(distM)} · ETA ${eta} · ${speed} км/год`, false);
 
             if (mapType === 'google') {
@@ -2291,12 +2284,12 @@
                             repeat: '10px'
                         }]
                     }));
-                    aimOverlays.push(createGoogleAimLabel(midLL, labelText, brg));
+                    aimOverlays.push(createGoogleAimLabel(midLL, labelText));
                 } else {
                     aimOverlays[0].setPosition({ lat: aimTarget.lat, lng: aimTarget.lon });
                     aimOverlays[1].setPath(path);
                     if (aimOverlays[2]?.setPose) {
-                        aimOverlays[2].setPose(midLL, brg);
+                        aimOverlays[2].setPose(midLL);
                         aimOverlays[2].setLabel(labelText);
                     }
                 }
@@ -4930,6 +4923,7 @@
             if (isCoordPickMode) stopCoordPickMode();
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
+            if (isAimPlaceMode) stopAimPlaceMode();
             if (isPlaneAttached) detachFromHostTrack(true);
             if (isAttachPickMode) {
                 clearAttachPickListener();
