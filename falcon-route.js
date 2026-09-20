@@ -819,7 +819,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-40';
+    const FR_BUILD = 'ui-clean-41';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1497,10 +1497,16 @@ function formatCoord(lat, lon, format) {
                     display: flex; justify-content: space-between; align-items: center;
                 }
                 #falcon-route-ui .fr-list {
-                    max-height: 120px !important; height: 120px !important;
+                    max-height: 120px !important; height: auto !important; min-height: 0 !important;
                     overflow-x: hidden; overflow-y: auto !important;
-                    background: #0b0e14; border: 1px solid #2a3142; border-radius: 8px; padding: 4px;
+                    background: #0b0e14; border: 1px solid #2a3142; border-radius: 8px; padding: 0;
                     flex-shrink: 0 !important;
+                }
+                #falcon-route-ui .fr-list:empty {
+                    display: none !important;
+                }
+                #falcon-route-ui .fr-list:not(:empty) {
+                    padding: 4px;
                 }
                 #falcon-route-ui .fr-item {
                     display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;
