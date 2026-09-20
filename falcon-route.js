@@ -555,7 +555,7 @@
         return `${zone}${band}${eLetter}${nLetter}${pad(e, precision)}${pad(n, precision)}`;
     }
 
-    function formatCoord(lat, lon, format) {
+function formatCoord(lat, lon, format) {
         switch (format) {
             case 'dm': return formatDM(lat, lon);
             case 'dms': return formatDMS(lat, lon);
@@ -563,6 +563,140 @@
             default: return `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
         }
     }
+
+    function utmToLatLon(zone, easting, northing, northern) {
+        const a = 6378137;
+        const f = 1 / 298.257223563;
+        const k0 = 0.9996;
+        const e2 = f * (2 - f);
+        const ep2 = e2 / (1 - e2);
+        const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+        let x = easting - 500000;
+        let y = northing;
+        if (!northern) y -= 10000000;
+        const lonOrigin = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
+        const M = y / k0;
+        const mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 ** 3 / 256));
+        const phi1 = mu
+            + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * Math.sin(2 * mu)
+            + (21 * e1 * e1 / 16 - 55 * e1 ** 4 / 32) * Math.sin(4 * mu)
+            + (151 * e1 ** 3 / 96) * Math.sin(6 * mu)
+            + (1097 * e1 ** 4 / 512) * Math.sin(8 * mu);
+        const sinP = Math.sin(phi1);
+        const cosP = Math.cos(phi1);
+        const tanP = Math.tan(phi1);
+        const N1 = a / Math.sqrt(1 - e2 * sinP * sinP);
+        const T1 = tanP * tanP;
+        const C1 = ep2 * cosP * cosP;
+        const R1 = a * (1 - e2) / Math.pow(1 - e2 * sinP * sinP, 1.5);
+        const D = x / (N1 * k0);
+        let lat = phi1 - (N1 * tanP / R1) * (D * D / 2
+            - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * D ** 4 / 24
+            + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * D ** 6 / 720);
+        let lon = lonOrigin + (D - (1 + 2 * T1 + C1) * D ** 3 / 6
+            + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * D ** 5 / 120) / cosP;
+        return { lat: toDeg(lat), lon: toDeg(lon) };
+    }
+
+    function mgrsToLatLon(mgrsRaw) {
+        const s = String(mgrsRaw || '').replace(/\s+/g, '').toUpperCase();
+        const m = s.match(/^(\d{1,2})([C-X])([A-Z])([A-Z])(\d+)$/);
+        if (!m) return null;
+        const zone = parseInt(m[1], 10);
+        const band = m[2];
+        const eLetter = m[3];
+        const nLetter = m[4];
+        const digits = m[5];
+        if (digits.length % 2 !== 0 || digits.length < 2 || digits.length > 10) return null;
+        const precision = digits.length / 2;
+        const eNum = parseInt(digits.slice(0, precision), 10);
+        const nNum = parseInt(digits.slice(precision), 10);
+        const set = (zone - 1) % 6;
+        const e100kLetters = [
+            'ABCDEFGH', 'JKLMNPQR', 'STUVWXYZ',
+            'ABCDEFGH', 'JKLMNPQR', 'STUVWXYZ'
+        ];
+        const n100kLetters = [
+            'ABCDEFGHJKLMNPQRSTUV',
+            'FGHJKLMNPQRSTUVABCDE'
+        ];
+        const eIdx = e100kLetters[set].indexOf(eLetter);
+        const nIdx = n100kLetters[zone % 2 === 0 ? 1 : 0].indexOf(nLetter);
+        if (eIdx < 0 || nIdx < 0) return null;
+        const bandLetters = 'CDEFGHJKLMNPQRSTUVWX';
+        const bandIdx = bandLetters.indexOf(band);
+        if (bandIdx < 0) return null;
+        const bandMinLat = -80 + bandIdx * 8;
+        const bandMaxLat = band === 'X' ? 84 : bandMinLat + 8;
+        const divisor = 10 ** (5 - precision);
+        const easting = (eIdx + 1) * 100000 + eNum * divisor + divisor / 2;
+        let northingBase = nIdx * 100000 + nNum * divisor + divisor / 2;
+        const northern = band >= 'N';
+        // find 2e6 offset so lat falls in band
+        let best = null;
+        for (let offset = 0; offset <= 100; offset++) {
+            const northing = northingBase + offset * 2000000;
+            if (northing < 0 || northing > 10000000) continue;
+            const ll = utmToLatLon(zone, easting, northern ? northing : northing, northern);
+            // for southern, northing already includes false northing handling in utmToLatLon via northern flag
+            if (!northern) {
+                // try with southern false northing: pass northing as stored UTM (0..10M)
+                const llS = utmToLatLon(zone, easting, northing, false);
+                if (llS.lat >= bandMinLat - 0.5 && llS.lat <= bandMaxLat + 0.5) {
+                    best = llS;
+                    break;
+                }
+            } else if (ll.lat >= bandMinLat - 0.5 && ll.lat <= bandMaxLat + 0.5) {
+                best = ll;
+                break;
+            }
+        }
+        if (!best && !northern) {
+            for (let offset = 0; offset <= 100; offset++) {
+                const northing = northingBase + offset * 2000000;
+                const llS = utmToLatLon(zone, easting, northing, false);
+                if (llS.lat >= bandMinLat - 0.5 && llS.lat <= bandMaxLat + 0.5) {
+                    best = llS;
+                    break;
+                }
+            }
+        }
+        if (!best) return null;
+        if (!Number.isFinite(best.lat) || !Number.isFinite(best.lon)) return null;
+        if (Math.abs(best.lat) > 90 || Math.abs(best.lon) > 180) return null;
+        return best;
+    }
+
+    function parseAnyCoords(raw) {
+        const s = String(raw || '').trim();
+        if (!s) return null;
+        const mgrsTry = mgrsToLatLon(s);
+        if (mgrsTry) return mgrsTry;
+        const dd = s.match(/^([+-]?\d+(?:\.\d+)?)\s*[,;\s]\s*([+-]?\d+(?:\.\d+)?)$/);
+        if (dd) {
+            const lat = parseFloat(dd[1]);
+            const lon = parseFloat(dd[2]);
+            if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+                return { lat, lon };
+            }
+        }
+        // DM / DMS: 50° 27.123' N 30° 31.456' E  or with "
+        const dms = s.match(
+            /(\d+)\s*°\s*(\d+(?:\.\d+)?)\s*['′]?\s*(?:(\d+(?:\.\d+)?)\s*["″]?)?\s*([NSns])\s+(\d+)\s*°\s*(\d+(?:\.\d+)?)\s*['′]?\s*(?:(\d+(?:\.\d+)?)\s*["″]?)?\s*([EWew])/
+        );
+        if (dms) {
+            const toDec = (d, m, sec, hemi) => {
+                let v = parseFloat(d) + parseFloat(m) / 60 + (sec ? parseFloat(sec) : 0) / 3600;
+                if (/[SWsw]/.test(hemi)) v = -v;
+                return v;
+            };
+            const lat = toDec(dms[1], dms[2], dms[3], dms[4]);
+            const lon = toDec(dms[5], dms[6], dms[7], dms[8]);
+            if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) return { lat, lon };
+        }
+        return null;
+    }
+
 
     // ---------- Геометрія коридору ----------
     function haversineM(lat1, lon1, lat2, lon2) {
@@ -685,7 +819,7 @@
         };
     }
 
-    const FR_BUILD = 'ui-clean-31';
+    const FR_BUILD = 'ui-clean-32';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1636,9 +1770,10 @@
                             <span class="fr-hot-t">Точка</span>
                         </button>
                     </div>
-                    <button type="button" class="fr-mgrs" id="fr-coord-pick" data-fr-acc="coords" data-fr-click="fr-coord-pick" title="Скопіювати MGRS кліком на карті">
+                    <button type="button" class="fr-mgrs" id="fr-coord-pick" data-fr-acc="coords" data-fr-click="fr-coord-pick" title="Скопіювати координати кліком на карті [Q]">
                         <span class="fr-mgrs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="1.5"/><path d="M9 8h6M9 12h6M9 16h4"/><path d="M15 3.5v4h4"/></svg></span>
                         <span>MGRS</span>
+                        <span class="fr-hot-k" style="position:static;margin-left:4px">Q</span>
                     </button>
                     <button class="fr-btn fr-btn-pick" id="fr-pick" style="display:none" aria-hidden="true">pick</button>
                     <div class="fr-hidden-actions" style="display:none" aria-hidden="true">
@@ -1653,7 +1788,7 @@
                 </div>
 
                 <div class="fr-hub" id="fr-hub">
-                    <div class="fr-hub-lead">Гарячі кнопки зверху · дорога A→B з поворотами · усе можна видалити</div>
+                    <div class="fr-hub-lead">Q — координати · клік по точці — видалити · дорога A→B</div>
                     <button type="button" class="fr-hub-tile" data-fr-acc="ruler">
                         <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="10.5" width="17" height="5" rx="1" transform="rotate(-35 12 13)"/><path d="M6.2 14.6l1.1-1.1M8.4 13.1l1.1-1.1M10.6 11.5l1.1-1.1M12.8 10l1.1-1.1M15 8.4l1.1-1.1"/></svg></span>
                         <span class="fr-hub-txt">Лінійка</span>
@@ -1734,7 +1869,7 @@
                 <details class="fr-acc" data-fr-acc="analytics">
                     <summary><span class="fr-acc-title">Аналітика</span></summary>
                     <div class="fr-acc-body">
-                        <div class="fr-hint">Спільна аналітика для всіх у кімнаті: яскрава <b>ціль</b> (з текстом або без), напівпрозора <b>дорога</b> для маршрутів бортів (початок+кінець → сама з поворотами, можна коригувати), мітки. Усе можна <b>видаляти</b> зі списку або з карти.</div>
+                        <div class="fr-hint">Спільна аналітика для всіх у кімнаті: яскрава <b>ціль</b> (з текстом або без), напівпрозора <b>дорога</b> для маршрутів бортів (початок+кінець → сама з поворотами, можна коригувати), мітки. Усе можна <b>видаляти</b> кліком по позначці на карті або зі списку.</div>
                         <div class="fr-field">
                             <label for="fr-ana-text">Текст (опційно)</label>
                             <input type="text" id="fr-ana-text" placeholder="Назва цілі / мітки" maxlength="48">
@@ -1875,15 +2010,27 @@
                     <summary><span class="fr-acc-title">Координати</span></summary>
                     <div class="fr-acc-body">
                         <div class="fr-field">
-                            <label for="fr-coord-format">Формат</label>
+                            <label for="fr-coord-format">Формат копіювання</label>
                             <select id="fr-coord-format">
                                 <option value="dd">DD (десяткові)</option>
                                 <option value="dm">DM</option>
                                 <option value="dms">DMS</option>
-                                <option value="mgrs">MGRS</option>
+                                <option value="mgrs" selected>MGRS</option>
                             </select>
                         </div>
-                        <button class="fr-btn fr-btn-wide" id="fr-copy">Скопіювати видимі</button>
+                        <div class="fr-hint">Q — клацни карту, щоб скопіювати координати. Клік по цілі / мітці / дорозі на карті — видалити.</div>
+                        <button class="fr-btn fr-btn-wide" id="fr-coord-pick-panel">Клацнути на карті → копіювати [Q]</button>
+                        <div class="fr-field">
+                            <label for="fr-coord-input">Вписати координати</label>
+                            <input type="text" id="fr-coord-input" placeholder="50.450000, 30.520000 · або MGRS" autocomplete="off">
+                        </div>
+                        <div class="fr-field">
+                            <label for="fr-coord-label">Напис на точці (опційно)</label>
+                            <input type="text" id="fr-coord-label" placeholder="Порожньо = точка без напису" maxlength="48" autocomplete="off">
+                        </div>
+                        <button class="fr-btn fr-btn-wide" id="fr-coord-place">Поставити точку на карті</button>
+                        <div class="fr-status muted" id="fr-coord-place-status"></div>
+                        <button class="fr-btn fr-btn-wide" id="fr-copy">Скопіювати видимі точки</button>
                     </div>
                 </details>
 
@@ -3340,20 +3487,22 @@
             syncQuickBar();
         }
 
-        async function copyMgrsAt(lat, lon, btn) {
+        async function copyCoordsAt(lat, lon, btn) {
+            const fmt = document.getElementById('fr-coord-format')?.value || 'mgrs';
+            const text = formatCoord(lat, lon, fmt);
             const mgrs = latLonToMgrs(lat, lon, 5);
             const dd = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-            const text = mgrs;
-            await copyText(text, btn, `✅ ${mgrs}`);
-            console.log('[FALCONROUTE] MGRS copied:', mgrs, '| DD:', dd);
+            await copyText(text, btn, `✅ ${text}`);
+            console.log('[FALCONROUTE] coords copied:', text, '| MGRS:', mgrs, '| DD:', dd);
             try {
                 const tip = document.createElement('div');
-                tip.textContent = `${mgrs}`;
+                tip.textContent = text;
                 tip.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999999;background:#14532d;color:#bbf7d0;padding:10px 14px;border-radius:8px;font:12px/1.3 system-ui;box-shadow:0 4px 16px rgba(0,0,0,.5)';
                 document.body.appendChild(tip);
                 setTimeout(() => tip.remove(), 2200);
             } catch (_) { /* ignore */ }
         }
+        const copyMgrsAt = copyCoordsAt;
 
         function stopCorridorMode(commit) {
             if (corridorListener) {
@@ -3511,40 +3660,101 @@
             }
         };
 
-        const coordPickBtn = document.getElementById('fr-coord-pick');
-        coordPickBtn.onclick = () => {
+        function beginCoordPickMode() {
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
             if (isPickMode) stopPickMode();
             if (isAimPlaceMode) stopAimPlaceMode();
             stopAnalyticsModes();
             stopAircraftModes();
+            const coordPickBtn = document.getElementById('fr-coord-pick');
             if (isCoordPickMode) {
                 stopCoordPickMode();
                 return;
             }
-
             isCoordPickMode = true;
-            coordPickBtn.classList.add('active');
-            coordPickBtn.textContent = 'Клацни точку → MGRS';
+            if (coordPickBtn) {
+                coordPickBtn.classList.add('active');
+                coordPickBtn.textContent = 'Клацни точку…';
+            }
             syncQuickBar();
-
             if (mapType === 'google') {
                 coordPickListener = map.addListener('click', (e) => {
                     if (!e?.latLng) return;
-                    copyMgrsAt(e.latLng.lat(), e.latLng.lng(), coordPickBtn);
+                    copyCoordsAt(e.latLng.lat(), e.latLng.lng(), coordPickBtn);
                     stopCoordPickMode();
                 });
-            } else {
+            } else if (map.canvas) {
                 coordPickListener = (e) => {
                     const ll = mapClickLatLon(e);
                     if (!ll) return;
-                    copyMgrsAt(ll.lat, ll.lon, coordPickBtn);
+                    copyCoordsAt(ll.lat, ll.lon, coordPickBtn);
                     stopCoordPickMode();
                 };
                 map.canvas.addEventListener('click', coordPickListener, { once: true });
             }
-        };
+        }
+
+        function panToLatLon(lat, lon) {
+            try {
+                if (mapType === 'google') {
+                    map.panTo({ lat, lng: lon });
+                    const z = map.getZoom?.();
+                    if (Number.isFinite(z) && z < 12) map.setZoom(14);
+                } else if (map?.camera && typeof Cesium !== 'undefined') {
+                    map.camera.flyTo({
+                        destination: Cesium.Cartesian3.fromDegrees(lon, lat, 8000),
+                        duration: 0.8
+                    });
+                }
+            } catch (_) { /* ignore */ }
+        }
+
+        function placeAnalyticsPointFromCoords() {
+            const input = document.getElementById('fr-coord-input');
+            const labelEl = document.getElementById('fr-coord-label');
+            const status = document.getElementById('fr-coord-place-status');
+            const parsed = parseAnyCoords(input?.value || '');
+            if (!parsed) {
+                if (status) {
+                    status.textContent = 'Не розпізнано. Приклад: 50.45, 30.52 або MGRS';
+                    status.className = 'fr-status';
+                }
+                return;
+            }
+            const text = String(labelEl?.value || '').trim();
+            const item = {
+                id: anaNewId('note'),
+                lat: parsed.lat,
+                lon: parsed.lon,
+                text,
+                color: (document.getElementById('fr-ana-color')?.value) || '#38bdf8',
+                createdBy: CLIENT_ID,
+                createdAt: Date.now()
+            };
+            analyticsStore.notes[item.id] = item;
+            renderAnalytics();
+            pushAnalyticsItem('notes', item);
+            panToLatLon(parsed.lat, parsed.lon);
+            if (status) {
+                status.textContent = text
+                    ? `Точка «${text}» поставлена`
+                    : `Точка без напису: ${parsed.lat.toFixed(5)}, ${parsed.lon.toFixed(5)}`;
+                status.className = 'fr-status muted';
+            }
+            openAccSection('coords');
+        }
+
+        const coordPickBtn = document.getElementById('fr-coord-pick');
+        if (coordPickBtn) coordPickBtn.onclick = () => beginCoordPickMode();
+        document.getElementById('fr-coord-pick-panel')?.addEventListener('click', () => beginCoordPickMode());
+        document.getElementById('fr-coord-place')?.addEventListener('click', () => placeAnalyticsPointFromCoords());
+        document.getElementById('fr-coord-input')?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                placeAnalyticsPointFromCoords();
+            }
+        });
 
         const corridorBtn = document.getElementById('fr-corridor');
         corridorBtn.onclick = () => {
@@ -5583,7 +5793,7 @@
             clearAnaDraftOverlays();
         }
 
-        function createAnaLabel(lat, lon, text, kind) {
+        function createAnaLabel(lat, lon, text, kind, onClick) {
             if (!text) return null;
             if (mapType === 'google') {
                 class FrAnaLabel extends google.maps.OverlayView {
@@ -5598,6 +5808,15 @@
                         const chip = document.createElement('div');
                         chip.className = 'fr-ana-chip';
                         chip.textContent = text;
+                        chip.style.cursor = 'pointer';
+                        chip.title = 'Клік — видалити';
+                        if (typeof onClick === 'function') {
+                            chip.addEventListener('click', (ev) => {
+                                ev.preventDefault();
+                                ev.stopPropagation();
+                                onClick();
+                            });
+                        }
                         this.div.appendChild(chip);
                         this.getPanes().floatPane.appendChild(this.div);
                     }
@@ -5656,12 +5875,16 @@
                         title: t.text || 'Ціль'
                     });
                     markOwnOverlay(m);
-                    m.addListener('click', () => {
-                        if (!isAnaDeleteMode) return;
+                    m.addListener('click', (ev) => {
+                        try { ev?.stop?.(); } catch (_) {}
                         deleteAnalyticsItem('targets', id);
+                        setAnaStatus('Ціль видалено', false);
                     });
                     parts.push(m);
-                    const lab = createAnaLabel(t.lat, t.lon, t.text || '', 'target');
+                    const lab = createAnaLabel(t.lat, t.lon, t.text || '', 'target', () => {
+                        deleteAnalyticsItem('targets', id);
+                        setAnaStatus('Ціль видалено', false);
+                    });
                     if (lab) parts.push(lab);
                 } else {
                     parts.push(map.entities.add({
@@ -5705,9 +5928,10 @@
                         clickable: true
                     });
                     markOwnOverlay(poly);
-                    poly.addListener('click', () => {
-                        if (!isAnaDeleteMode) return;
+                    poly.addListener('click', (ev) => {
+                        try { ev?.stop?.(); } catch (_) {}
                         deleteAnalyticsItem('roads', id);
+                        setAnaStatus('Дорогу видалено', false);
                     });
                     parts.push(poly);
                 } else {
@@ -5742,12 +5966,16 @@
                         title: n.text || 'Мітка'
                     });
                     markOwnOverlay(m);
-                    m.addListener('click', () => {
-                        if (!isAnaDeleteMode) return;
+                    m.addListener('click', (ev) => {
+                        try { ev?.stop?.(); } catch (_) {}
                         deleteAnalyticsItem('notes', id);
+                        setAnaStatus('Мітку видалено', false);
                     });
                     parts.push(m);
-                    const lab = createAnaLabel(n.lat, n.lon, n.text || '', 'note');
+                    const lab = createAnaLabel(n.lat, n.lon, n.text || '', 'note', () => {
+                        deleteAnalyticsItem('notes', id);
+                        setAnaStatus('Мітку видалено', false);
+                    });
                     if (lab) parts.push(lab);
                 } else {
                     parts.push(map.entities.add({
@@ -6287,7 +6515,7 @@
                     id: anaNewId('note'),
                     lat,
                     lon,
-                    text: anaTextInput() || `${lat.toFixed(5)}, ${lon.toFixed(5)}`,
+                    text: anaTextInput(),
                     color: anaColor(),
                     createdBy: CLIENT_ID,
                     createdAt: Date.now()
@@ -6569,6 +6797,10 @@
                         e.preventDefault();
                         stopAnalyticsModes();
                     }
+                    if (isCoordPickMode) {
+                        e.preventDefault();
+                        stopCoordPickMode();
+                    }
                     return;
                 }
                 if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -6589,6 +6821,10 @@
                     e.preventDefault();
                     openAccSection('points');
                     document.getElementById('fr-pick')?.click();
+                } else if (k === 'q') {
+                    e.preventDefault();
+                    openAccSection('coords');
+                    beginCoordPickMode();
                 }
             });
         }
