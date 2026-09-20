@@ -819,7 +819,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-41';
+    const FR_BUILD = 'ui-clean-42';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1310,7 +1310,7 @@ function formatCoord(lat, lon, format) {
         panel.id = 'falcon-route-ui';
         panel.style.cssText = `
             position: fixed; top: 24px; right: 24px; width: 380px;
-            height: min(92vh, calc(100vh - 36px)); max-height: calc(100vh - 36px);
+            height: auto; max-height: calc(100vh - 24px);
             background: #0b1018; color: #e8eaef; border: 1px solid #1f2937;
             border-radius: 16px; box-shadow: 0 18px 48px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.03) inset;
             font-family: "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 12px;
@@ -1320,6 +1320,10 @@ function formatCoord(lat, lon, format) {
 
         const htmlLayout = `
             <style>
+                #falcon-route-ui {
+                    height: auto !important;
+                    max-height: calc(100vh - 24px) !important;
+                }
                 #falcon-route-ui * { box-sizing: border-box; }
                 #falcon-route-ui .fr-head {
                     background: linear-gradient(180deg, #1c2230 0%, #171b26 100%);
@@ -1338,10 +1342,24 @@ function formatCoord(lat, lon, format) {
                 }
                 #falcon-route-ui .fr-icon-btn:hover { background: #1e293b; color: #fff; border-color: #475569; }
                 #falcon-route-ui .fr-body {
-                    padding: 8px 8px 10px; flex: 1 1 auto; min-height: 0;
+                    padding: 8px 8px 10px; flex: 0 1 auto; min-height: 0;
                     overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
                     -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px;
                 }
+                #falcon-route-ui.fr-hub-mode .fr-body {
+                    flex: 0 0 auto !important;
+                    overflow: visible !important;
+                    min-height: 0 !important;
+                }
+                #falcon-route-ui.fr-hub-mode .fr-footer {
+                    margin-top: 0 !important;
+                }
+                #falcon-route-ui.fr-section-mode .fr-body {
+                    flex: 1 1 auto;
+                    min-height: 0;
+                    overflow-y: auto;
+                }
+                #falcon-route-ui .fr-footer { flex: 0 0 auto; }
                 #falcon-route-ui .fr-body.hidden { display: none; }
                 #falcon-route-ui.fr-collapsed { height: auto !important; max-height: none; }
                 #falcon-route-ui .fr-body > * { width: 100%; margin: 0; flex: none !important; flex-shrink: 0 !important; }
@@ -1630,7 +1648,8 @@ function formatCoord(lat, lon, format) {
                     width:7px; height:7px; border-radius:50%; background:#22c55e;
                     box-shadow:0 0 8px rgba(34,197,94,.7);
                 }
-                #falcon-route-ui .fr-body { background:#0b1018 !important; gap:10px !important; }
+                #falcon-route-ui .fr-body { background:#0b1018 !important; gap:6px !important; }
+                #falcon-route-ui.fr-hub-mode .fr-body { gap:6px !important; }
                 #falcon-route-ui .fr-quick {
                     background:transparent !important; border:none !important; padding:0 !important; gap:8px !important;
                 }
@@ -1640,7 +1659,7 @@ function formatCoord(lat, lon, format) {
                 }
                 #falcon-route-ui .fr-hot {
                     position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
-                    gap:2px; min-height:48px; border-radius:10px; border:1px solid #2a3548;
+                    gap:1px; min-height:42px; border-radius:9px; border:1px solid #2a3548;
                     background:#121826; color:#e2e8f0; cursor:pointer; padding:6px 3px;
                 }
                 #falcon-route-ui .fr-hot:hover, #falcon-route-ui .fr-hot.active {
@@ -1665,9 +1684,9 @@ function formatCoord(lat, lon, format) {
                     background:#121826; border:1px solid #1f2937; border-radius:8px; padding:6px 8px;
                 }
                 #falcon-route-ui .fr-hub-tile {
-                    min-height:64px !important; align-items:flex-start !important; justify-content:flex-start !important;
-                    padding:8px 9px !important; gap:3px !important; background:#121826 !important;
-                    border:1px solid #243044 !important; border-radius:12px !important;
+                    min-height:0 !important; align-items:flex-start !important; justify-content:flex-start !important;
+                    padding:7px 8px !important; gap:2px !important; background:#121826 !important;
+                    border:1px solid #243044 !important; border-radius:10px !important;
                 }
                 #falcon-route-ui .fr-hub-ico { font-size:18px !important; color:#38bdf8 !important; }
                 #falcon-route-ui .fr-hub-txt { font-size:12px !important; font-weight:750 !important; color:#f1f5f9 !important; text-align:left !important; }
@@ -1678,7 +1697,8 @@ function formatCoord(lat, lon, format) {
                 }
                 #falcon-route-ui .fr-footer {
                     background:#0c121b !important; border-top:1px solid #1f2937 !important;
-                    padding:8px 10px 10px !important; gap:8px !important;
+                    padding:6px 8px 8px !important; gap:6px !important;
+                    flex: 0 0 auto !important;
                 }
                 #falcon-route-ui .fr-dock {
                     display:grid; grid-template-columns:repeat(6,1fr); gap:6px;
