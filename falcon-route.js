@@ -819,7 +819,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-37';
+    const FR_BUILD = 'ui-clean-38';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -6899,7 +6899,6 @@ function formatCoord(lat, lon, format) {
                         scheduleKillHostCoordMenus();
                     };
                     mapRoot.addEventListener('click', mapRoot.__frHostMenuBubbleStop, false);
-                    mapRoot.addEventListener('mousedown', mapRoot.__frHostMenuBubbleStop, false);
                 }
             } catch (_) { /* ignore */ }
 
