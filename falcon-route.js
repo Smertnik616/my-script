@@ -819,7 +819,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-35';
+    const FR_BUILD = 'ui-clean-36';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -6793,64 +6793,84 @@ function formatCoord(lat, lon, format) {
 
         function wireHotkeys() {
             if (window.__frHotkeyHandler) {
-                document.removeEventListener('keydown', window.__frHotkeyHandler);
+                try {
+                    window.removeEventListener('keydown', window.__frHotkeyHandler, true);
+                    document.removeEventListener('keydown', window.__frHotkeyHandler, true);
+                    document.removeEventListener('keydown', window.__frHotkeyHandler);
+                } catch (_) { /* ignore */ }
                 window.__frHotkeyHandler = null;
             }
             const onKey = (e) => {
-                if (accessRevoked) return;
-                const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
-                if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) {
-                    if (e.key === 'Enter' && isAnaRoadMode && tag === 'input' && e.target.id === 'fr-ana-text') {
-                        /* allow */
-                    } else if (e.key === 'Enter' && isAnaRoadMode) {
+                try {
+                    if (accessRevoked) return;
+                    const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+                    const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable;
+                    if (typing) {
+                        if (e.key === 'Enter' && isAnaRoadMode && tag === 'input' && e.target.id === 'fr-ana-text') {
+                            /* allow */
+                        } else if (e.key === 'Enter' && isAnaRoadMode) {
+                            e.preventDefault();
+                            finishAnaRoad();
+                            return;
+                        } else {
+                            return;
+                        }
+                    }
+                    if (e.key === 'Enter' && isAnaRoadMode) {
                         e.preventDefault();
                         finishAnaRoad();
                         return;
-                    } else {
+                    }
+                    if (e.key === 'Escape') {
+                        if (isAnaTargetMode || isAnaNoteMode || isAnaRoadMode || isAnaDeleteMode) {
+                            e.preventDefault();
+                            stopAnalyticsModes();
+                        }
+                        if (isCoordPickMode) {
+                            e.preventDefault();
+                            stopCoordPickMode();
+                        }
                         return;
                     }
-                }
-                if (e.key === 'Enter' && isAnaRoadMode) {
-                    e.preventDefault();
-                    finishAnaRoad();
-                    return;
-                }
-                if (e.key === 'Escape') {
-                    if (isAnaTargetMode || isAnaNoteMode || isAnaRoadMode || isAnaDeleteMode) {
+                    if (e.metaKey || e.ctrlKey || e.altKey) return;
+                    // e.code — фізична клавіша (працює і на українській розкладці)
+                    const code = String(e.code || '');
+                    const k = String(e.key || '').toLowerCase();
+                    const isKey = (latinCode, ...chars) =>
+                        code === latinCode || chars.includes(k);
+
+                    if (isKey('KeyR', 'r', 'к')) {
                         e.preventDefault();
-                        stopAnalyticsModes();
-                    }
-                    if (isCoordPickMode) {
+                        e.stopPropagation();
+                        openAccSection('ruler');
+                        document.getElementById('fr-ruler')?.click();
+                    } else if (isKey('KeyT', 't', 'е')) {
                         e.preventDefault();
-                        stopCoordPickMode();
+                        e.stopPropagation();
+                        openAccSection('analytics');
+                        beginAnaTargetPlace();
+                    } else if (isKey('KeyD', 'd', 'в')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openAccSection('analytics');
+                        beginAnaRoadDraw();
+                    } else if (isKey('KeyP', 'p', 'з')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openAccSection('points');
+                        document.getElementById('fr-pick')?.click();
+                    } else if (isKey('KeyQ', 'q', 'й')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        beginCoordPickMode();
                     }
-                    return;
-                }
-                if (e.metaKey || e.ctrlKey || e.altKey) return;
-                const k = String(e.key || '').toLowerCase();
-                if (k === 'r') {
-                    e.preventDefault();
-                    openAccSection('ruler');
-                    document.getElementById('fr-ruler')?.click();
-                } else if (k === 't') {
-                    e.preventDefault();
-                    openAccSection('analytics');
-                    beginAnaTargetPlace();
-                } else if (k === 'd') {
-                    e.preventDefault();
-                    openAccSection('analytics');
-                    beginAnaRoadDraw();
-                } else if (k === 'p') {
-                    e.preventDefault();
-                    openAccSection('points');
-                    document.getElementById('fr-pick')?.click();
-                } else if (k === 'q') {
-                    e.preventDefault();
-                    beginCoordPickMode();
+                } catch (err) {
+                    console.warn('[FALCONROUTE] hotkey error', err);
                 }
             };
             window.__frHotkeyHandler = onKey;
-            document.addEventListener('keydown', onKey);
+            // capture:true — щоб карта (Google/Cesium) не «з’їдала» клавіші
+            window.addEventListener('keydown', onKey, true);
             window.__frHotkeysWired = true;
         }
 
