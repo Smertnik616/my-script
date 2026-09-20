@@ -819,7 +819,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-38';
+    const FR_BUILD = 'ui-clean-39';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1266,10 +1266,12 @@ function formatCoord(lat, lon, format) {
         let isAnaNoteMode = false;
         let isAnaRoadMode = false;
         let isAnaDeleteMode = false;
+        let isAnaBanMode = false;
         let anaTargetListener = null;
         let anaNoteListener = null;
         let anaRoadListener = null;
         let anaDeleteListener = null;
+        let anaBanListener = null;
         let applyAnalyticsRemote = false;
         let analyticsEs = null;
         let roadRouteSeq = 0;
@@ -1759,7 +1761,7 @@ function formatCoord(lat, lon, format) {
                             <span class="fr-hot-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.8"/><path d="M12 2.8v3.2M12 18v3.2M2.8 12h3.2M18 12h3.2"/></svg></span>
                             <span class="fr-hot-t">Ціль</span>
                         </button>
-                        <button type="button" class="fr-hot" id="fr-q-road" title="Дорога A→B [D]" data-fr-click="fr-ana-road" data-fr-acc="analytics">
+                        <button type="button" class="fr-hot" id="fr-q-road" title="Дорога A→B [B]" data-fr-click="fr-ana-road" data-fr-acc="analytics">
                             <span class="fr-hot-k">D</span>
                             <span class="fr-hot-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3l-3 18M17 3l3 18"/><path d="M12 5v2.5M12 11v2.5M12 17v2.5"/></svg></span>
                             <span class="fr-hot-t">Дорога</span>
@@ -1784,6 +1786,8 @@ function formatCoord(lat, lon, format) {
                         <button type="button" id="fr-q-attach" data-fr-click="fr-flight-attach" data-fr-acc="flight"></button>
                         <button type="button" id="fr-q-points" data-fr-cmd="toggle-points" data-fr-acc="filters"></button>
                         <button type="button" id="fr-q-note" data-fr-click="fr-ana-note" data-fr-acc="analytics"></button>
+                        <button type="button" id="fr-q-ban" data-fr-click="fr-ana-ban" data-fr-acc="analytics"></button>
+                        <button type="button" id="fr-q-delete" data-fr-click="fr-ana-delete" data-fr-acc="analytics"></button>
                     </div>
                 </div>
 
@@ -1869,7 +1873,7 @@ function formatCoord(lat, lon, format) {
                 <details class="fr-acc" data-fr-acc="analytics">
                     <summary><span class="fr-acc-title">Аналітика</span></summary>
                     <div class="fr-acc-body">
-                        <div class="fr-hint">Спільна аналітика для всіх у кімнаті: яскрава <b>ціль</b> (з текстом або без), напівпрозора <b>дорога</b> для маршрутів бортів (початок+кінець → сама з поворотами, можна коригувати), мітки. Усе можна <b>видаляти</b> кліком по позначці на карті або зі списку.</div>
+                        <div class="fr-hint">Спільна аналітика: <b>ціль [T]</b>, <b>заборона [G]</b> (знак ⛔), <b>дорога [B]</b>, мітки. <b>Видалення [D]</b> — клік по позначці на карті або ✕ у списку.</div>
                         <div class="fr-field">
                             <label for="fr-ana-text">Текст (опційно)</label>
                             <input type="text" id="fr-ana-text" placeholder="Назва цілі / мітки" maxlength="48">
@@ -1885,16 +1889,19 @@ function formatCoord(lat, lon, format) {
                             </div>
                         </div>
                         <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-ana-target">Ціль польоту</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-target">Ціль польоту [T]</button>
                             <button class="fr-btn fr-btn-pick" id="fr-ana-note">Мітка + текст</button>
                         </div>
                         <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-ana-road">Дорога A→B</button>
-                            <button class="fr-btn" id="fr-ana-road-finish">Застосувати</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-ban">Заборона [G]</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-road">Дорога A→B [B]</button>
                         </div>
                         <div class="fr-grid">
+                            <button class="fr-btn" id="fr-ana-road-finish">Застосувати</button>
                             <button class="fr-btn" id="fr-ana-road-undo">Скасувати точку</button>
-                            <button class="fr-btn fr-btn-danger" id="fr-ana-delete">Видалити з карти</button>
+                        </div>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-danger" id="fr-ana-delete">Видалити з карти [D]</button>
                         </div>
                         <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ana-clear">Скинути всю аналітику</button>
                         <div class="fr-status muted" id="fr-ana-status">Немає спільних позначок</div>
@@ -4137,8 +4144,14 @@ function formatCoord(lat, lon, format) {
             if (eye && showCb2) eye.classList.toggle('active', !!showCb2.checked);
             const qNote = document.getElementById('fr-q-note');
             if (qNote) qNote.classList.toggle('active', isAnaNoteMode);
+            const qBan = document.getElementById('fr-q-ban');
+            if (qBan) qBan.classList.toggle('active', isAnaBanMode);
+            const qDel = document.getElementById('fr-q-delete');
+            if (qDel) qDel.classList.toggle('active', isAnaDeleteMode);
             const delBtn = document.getElementById('fr-ana-delete');
             if (delBtn) delBtn.classList.toggle('active', isAnaDeleteMode);
+            const banBtn = document.getElementById('fr-ana-ban');
+            if (banBtn) banBtn.classList.toggle('active', isAnaBanMode);
         }
 
         document.getElementById('fr-pick-visible')?.addEventListener('click', () => {
@@ -5753,6 +5766,10 @@ function formatCoord(lat, lon, format) {
                 setAnaStatus('Клацни карту — мітка з текстом', false);
                 return;
             }
+            if (isAnaBanMode) {
+                setAnaStatus('Клацни карту — знак заборони ⛔', false);
+                return;
+            }
             if (!c.total) {
                 setAnaStatus('Немає спільних позначок', true);
                 return;
@@ -5775,6 +5792,15 @@ function formatCoord(lat, lon, format) {
             const svg =
                 `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">` +
                 `<circle cx="14" cy="14" r="9" fill="${c}" stroke="#fff" stroke-width="2"/></svg>`;
+            return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+        }
+
+        function analyticsBanIcon() {
+            const svg =
+                `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">` +
+                `<circle cx="20" cy="20" r="16" fill="#dc2626" stroke="#ffffff" stroke-width="2.5"/>` +
+                `<rect x="8" y="17.5" width="24" height="5" rx="1.5" fill="#ffffff"/>` +
+                `</svg>`;
             return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
         }
 
@@ -5972,39 +5998,42 @@ function formatCoord(lat, lon, format) {
             Object.keys(notes).forEach((id) => {
                 const n = notes[id];
                 if (!n || !Number.isFinite(n.lat) || !Number.isFinite(n.lon)) return;
-                const color = n.color || '#38bdf8';
+                const isBan = n.type === 'ban' || n.kind === 'ban';
+                const color = n.color || (isBan ? '#dc2626' : '#38bdf8');
+                const iconUrl = isBan ? analyticsBanIcon() : analyticsNoteIcon(color);
+                const iconSize = isBan ? 40 : 28;
                 const parts = [];
                 if (mapType === 'google') {
                     const m = new google.maps.Marker({
                         map,
                         position: { lat: n.lat, lng: n.lon },
                         icon: {
-                            url: analyticsNoteIcon(color),
-                            scaledSize: new google.maps.Size(28, 28),
-                            anchor: new google.maps.Point(14, 14)
+                            url: iconUrl,
+                            scaledSize: new google.maps.Size(iconSize, iconSize),
+                            anchor: new google.maps.Point(iconSize / 2, iconSize / 2)
                         },
-                        zIndex: 850,
-                        title: n.text || 'Мітка'
+                        zIndex: isBan ? 920 : 850,
+                        title: n.text || (isBan ? 'Заборона' : 'Мітка')
                     });
                     markOwnOverlay(m);
                     m.addListener('click', (ev) => {
                         try { ev?.stop?.(); } catch (_) {}
                         deleteAnalyticsItem('notes', id);
-                        setAnaStatus('Мітку видалено', false);
+                        setAnaStatus(isBan ? 'Заборону видалено' : 'Мітку видалено', false);
                     });
                     parts.push(m);
                     const lab = createAnaLabel(n.lat, n.lon, n.text || '', 'note', () => {
                         deleteAnalyticsItem('notes', id);
-                        setAnaStatus('Мітку видалено', false);
+                        setAnaStatus(isBan ? 'Заборону видалено' : 'Мітку видалено', false);
                     });
                     if (lab) parts.push(lab);
                 } else {
                     parts.push(map.entities.add({
                         position: Cesium.Cartesian3.fromDegrees(n.lon, n.lat),
                         billboard: {
-                            image: analyticsNoteIcon(color),
-                            width: 28,
-                            height: 28,
+                            image: iconUrl,
+                            width: iconSize,
+                            height: iconSize,
                             disableDepthTestDistance: Number.POSITIVE_INFINITY
                         }
                     }));
@@ -6221,7 +6250,7 @@ function formatCoord(lat, lon, format) {
                 rows.push({ kind: 'roads', id: r.id, label: `Дорога`, sub: `${n} тчк` });
             });
             Object.values(analyticsStore.notes || {}).forEach((n) => {
-                rows.push({ kind: 'notes', id: n.id, label: `${n.text || 'Мітка'}`, sub: `${n.lat?.toFixed?.(5)}, ${n.lon?.toFixed?.(5)}` });
+                rows.push({ kind: 'notes', id: n.id, label: `${(n.type === 'ban' || n.kind === 'ban') ? (n.text || 'Заборона') : (n.text || 'Мітка')}`, sub: `${n.lat?.toFixed?.(5)}, ${n.lon?.toFixed?.(5)}` });
             });
             rows.forEach((row) => {
                 const item = document.createElement('div');
@@ -6426,7 +6455,20 @@ function formatCoord(lat, lon, format) {
                     const btn = document.getElementById('fr-ana-delete');
                     if (btn) {
                         btn.classList.remove('active');
-                        btn.textContent = 'Видалити з карти';
+                        btn.textContent = 'Видалити з карти [D]';
+                    }
+                },
+                ban: () => {
+                    if (anaBanListener) {
+                        if (mapType === 'google') google.maps.event.removeListener(anaBanListener);
+                        else if (map.canvas) map.canvas.removeEventListener('click', anaBanListener);
+                        anaBanListener = null;
+                    }
+                    isAnaBanMode = false;
+                    const btn = document.getElementById('fr-ana-ban');
+                    if (btn) {
+                        btn.classList.remove('active');
+                        btn.textContent = 'Заборона [G]';
                     }
                 }
             };
@@ -6463,6 +6505,7 @@ function formatCoord(lat, lon, format) {
             clearAnaListener('note');
             clearAnaListener('road');
             clearAnaListener('delete');
+            clearAnaListener('ban');
             resetRoadDraft();
             clearAnaDraftOverlays();
             if (isAnaTargetMode) {
@@ -6515,6 +6558,7 @@ function formatCoord(lat, lon, format) {
             clearAnaListener('target');
             clearAnaListener('road');
             clearAnaListener('delete');
+            clearAnaListener('ban');
             resetRoadDraft();
             clearAnaDraftOverlays();
             if (isAnaNoteMode) {
@@ -6584,6 +6628,7 @@ function formatCoord(lat, lon, format) {
             clearAnaListener('target');
             clearAnaListener('note');
             clearAnaListener('delete');
+            clearAnaListener('ban');
             if (isAnaRoadMode) {
                 clearAnaListener('road');
                 resetRoadDraft();
@@ -6724,11 +6769,66 @@ function formatCoord(lat, lon, format) {
             return best;
         }
 
+        function beginAnaBanPlace() {
+            cancelMapModesForAnalytics();
+            clearAnaListener('target');
+            clearAnaListener('note');
+            clearAnaListener('road');
+            clearAnaListener('delete');
+            resetRoadDraft();
+            clearAnaDraftOverlays();
+            if (isAnaBanMode) {
+                clearAnaListener('ban');
+                refreshAnaStatus();
+                syncQuickBar();
+                return;
+            }
+            isAnaBanMode = true;
+            const btn = document.getElementById('fr-ana-ban');
+            if (btn) {
+                btn.classList.add('active');
+                btn.textContent = 'Клацни заборону…';
+            }
+            refreshAnaStatus();
+            syncQuickBar();
+            const onPick = (lat, lon) => {
+                const item = {
+                    id: anaNewId('ban'),
+                    lat,
+                    lon,
+                    text: anaTextInput(),
+                    color: '#dc2626',
+                    type: 'ban',
+                    createdBy: CLIENT_ID,
+                    createdAt: Date.now()
+                };
+                analyticsStore.notes[item.id] = item;
+                clearAnaListener('ban');
+                renderAnalytics();
+                pushAnalyticsItem('notes', item);
+            };
+            if (mapType === 'google') {
+                anaBanListener = map.addListener('click', (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                });
+            } else if (map.canvas) {
+                anaBanListener = (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                };
+                map.canvas.addEventListener('click', anaBanListener);
+            }
+        }
+
         function beginAnaDeleteMode() {
             cancelMapModesForAnalytics();
             clearAnaListener('target');
             clearAnaListener('note');
             clearAnaListener('road');
+            clearAnaListener('ban');
             resetRoadDraft();
             clearAnaDraftOverlays();
             if (isAnaDeleteMode) {
@@ -6773,6 +6873,7 @@ function formatCoord(lat, lon, format) {
         function wireAnalyticsUi() {
             document.getElementById('fr-ana-target')?.addEventListener('click', () => beginAnaTargetPlace());
             document.getElementById('fr-ana-note')?.addEventListener('click', () => beginAnaNotePlace());
+            document.getElementById('fr-ana-ban')?.addEventListener('click', () => beginAnaBanPlace());
             document.getElementById('fr-ana-road')?.addEventListener('click', () => beginAnaRoadDraw());
             document.getElementById('fr-ana-road-finish')?.addEventListener('click', () => finishAnaRoad());
             document.getElementById('fr-ana-road-undo')?.addEventListener('click', () => undoRoadPoint());
@@ -6802,6 +6903,7 @@ function formatCoord(lat, lon, format) {
                 isAnaNoteMode ||
                 isAnaRoadMode ||
                 isAnaDeleteMode ||
+                isAnaBanMode ||
                 isPlaceAircraftMode ||
                 isFlyToMode ||
                 isAttachPickMode
@@ -6948,7 +7050,7 @@ function formatCoord(lat, lon, format) {
                         return;
                     }
                     if (e.key === 'Escape') {
-                        if (isAnaTargetMode || isAnaNoteMode || isAnaRoadMode || isAnaDeleteMode) {
+                        if (isAnaTargetMode || isAnaNoteMode || isAnaRoadMode || isAnaDeleteMode || isAnaBanMode) {
                             e.preventDefault();
                             stopAnalyticsModes();
                         }
@@ -6979,7 +7081,17 @@ function formatCoord(lat, lon, format) {
                         e.preventDefault();
                         e.stopPropagation();
                         openAccSection('analytics');
+                        beginAnaDeleteMode();
+                    } else if (isKey('KeyB', 'b', 'и')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openAccSection('analytics');
                         beginAnaRoadDraw();
+                    } else if (isKey('KeyG', 'g', 'п')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openAccSection('analytics');
+                        beginAnaBanPlace();
                     } else if (isKey('KeyP', 'p', 'з')) {
                         e.preventDefault();
                         e.stopPropagation();
