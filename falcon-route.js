@@ -685,7 +685,7 @@
         };
     }
 
-    const FR_BUILD = 'analytics-roads-24';
+    const FR_BUILD = 'ana-del-route-26';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1126,15 +1126,19 @@
         // Аналітика (спільні цілі / дороги / мітки)
         let analyticsStore = { targets: {}, roads: {}, notes: {} };
         let analyticsOverlays = { targets: {}, roads: {}, notes: {}, draft: [] };
-        let draftRoadPoints = [];
+        let draftRoadPoints = []; // legacy alias for waypoints preview
+        let roadDraft = { start: null, end: null, vias: [], path: [], editingId: null };
         let isAnaTargetMode = false;
         let isAnaNoteMode = false;
         let isAnaRoadMode = false;
+        let isAnaDeleteMode = false;
         let anaTargetListener = null;
         let anaNoteListener = null;
         let anaRoadListener = null;
+        let anaDeleteListener = null;
         let applyAnalyticsRemote = false;
         let analyticsEs = null;
+        let roadRouteSeq = 0;
 
         installHostTrackSpy();
         window.__FR_hostTracks = () => {
@@ -1622,6 +1626,42 @@
                         </div>
                         <div class="fr-ruler-total" id="fr-flight-range">Обери борт для вимірювання</div>
                         <div class="fr-label" id="fr-flight-distances" style="white-space:pre-line;opacity:.85">Немає інших бортів онлайн</div>
+                    </div>
+                </details>
+
+                <details class="fr-acc" open data-fr-acc="analytics">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">📡</span>Аналітика</span></summary>
+                    <div class="fr-acc-body">
+                        <div class="fr-hint">Спільні цілі/дороги/мітки бачать усі в кімнаті. Дорога: клік <b>початок</b> і <b>кінець</b> — маршрут з поворотами сам; ще кліки — коригування через точку.</div>
+                        <div class="fr-field">
+                            <label for="fr-ana-text">Текст (опційно)</label>
+                            <input type="text" id="fr-ana-text" placeholder="Назва цілі / мітки" maxlength="48">
+                        </div>
+                        <div class="fr-field-grid">
+                            <div class="fr-field">
+                                <label for="fr-ana-color">Колір</label>
+                                <input type="color" id="fr-ana-color" value="#fbbf24">
+                            </div>
+                            <div class="fr-field">
+                                <label for="fr-ana-road-op">Прозорість дороги</label>
+                                <input type="number" id="fr-ana-road-op" value="0.4" min="0.15" max="0.85" step="0.05">
+                            </div>
+                        </div>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-target">◎ Ціль польоту</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-note">📌 Мітка + текст</button>
+                        </div>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-road">🛣 Дорога A→B</button>
+                            <button class="fr-btn" id="fr-ana-road-finish">✓ Застосувати</button>
+                        </div>
+                        <div class="fr-grid">
+                            <button class="fr-btn" id="fr-ana-road-undo">↩ Скасувати точку</button>
+                            <button class="fr-btn fr-btn-danger" id="fr-ana-delete">🗑 Видалити з карти</button>
+                        </div>
+                        <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ana-clear">Скинути всю аналітику</button>
+                        <div class="fr-status muted" id="fr-ana-status">Немає спільних позначок</div>
+                        <div class="fr-list" id="fr-ana-list"></div>
                     </div>
                 </details>
 
@@ -3648,6 +3688,8 @@
             if (qRoad) qRoad.classList.toggle('active', isAnaRoadMode);
             const qNote = document.getElementById('fr-q-note');
             if (qNote) qNote.classList.toggle('active', isAnaNoteMode);
+            const delBtn = document.getElementById('fr-ana-delete');
+            if (delBtn) delBtn.classList.toggle('active', isAnaDeleteMode);
         }
 
         function wireQuickBar() {
@@ -5184,8 +5226,23 @@
 
         function refreshAnaStatus() {
             const c = countAnalytics();
+            if (isAnaDeleteMode) {
+                setAnaStatus('Режим видалення: клацни ціль / мітку / дорогу на карті або ✕ у списку', false);
+                return;
+            }
             if (isAnaRoadMode) {
-                setAnaStatus(`Малювання дороги: ${draftRoadPoints.length} точок · Enter / «Завершити»`, false);
+                if (!roadDraft.start) {
+                    setAnaStatus('Дорога: клацни ПОЧАТОК на дорозі', false);
+                } else if (!roadDraft.end) {
+                    setAnaStatus('Дорога: клацни КІНЕЦЬ — маршрут побудується сам', false);
+                } else {
+                    const vias = (roadDraft.vias || []).length;
+                    const n = (roadDraft.path || []).length;
+                    setAnaStatus(
+                        `Маршрут готовий (${n} тчк${vias ? ', через ' + vias : ''}). Ще клік = коригування · Enter / «Застосувати»`,
+                        false
+                    );
+                }
                 return;
             }
             if (isAnaTargetMode) {
@@ -5200,7 +5257,7 @@
                 setAnaStatus('Немає спільних позначок', true);
                 return;
             }
-            setAnaStatus(`Цілей: ${c.t} · доріг: ${c.r} · міток: ${c.n}`, false);
+            setAnaStatus(`Цілей: ${c.t} · доріг: ${c.r} · міток: ${c.n} · ✕ у списку або «Видалити з карти»`, false);
         }
 
         function analyticsTargetIcon(color) {
@@ -5330,6 +5387,10 @@
                         title: t.text || 'Ціль'
                     });
                     markOwnOverlay(m);
+                    m.addListener('click', () => {
+                        if (!isAnaDeleteMode) return;
+                        deleteAnalyticsItem('targets', id);
+                    });
                     parts.push(m);
                     const lab = createAnaLabel(t.lat, t.lon, t.text || '', 'target');
                     if (lab) parts.push(lab);
@@ -5372,9 +5433,13 @@
                         strokeOpacity: opacity,
                         strokeWeight: 12,
                         zIndex: 50,
-                        clickable: false
+                        clickable: true
                     });
                     markOwnOverlay(poly);
+                    poly.addListener('click', () => {
+                        if (!isAnaDeleteMode) return;
+                        deleteAnalyticsItem('roads', id);
+                    });
                     parts.push(poly);
                 } else {
                     parts.push(map.entities.add({
@@ -5408,6 +5473,10 @@
                         title: n.text || 'Мітка'
                     });
                     markOwnOverlay(m);
+                    m.addListener('click', () => {
+                        if (!isAnaDeleteMode) return;
+                        deleteAnalyticsItem('notes', id);
+                    });
                     parts.push(m);
                     const lab = createAnaLabel(n.lat, n.lon, n.text || '', 'note');
                     if (lab) parts.push(lab);
@@ -5433,18 +5502,142 @@
             syncQuickBar();
         }
 
+        function syncDraftRoadPoints() {
+            const pts = [];
+            if (roadDraft.start) pts.push(roadDraft.start);
+            (roadDraft.vias || []).forEach((v) => pts.push(v));
+            if (roadDraft.end) pts.push(roadDraft.end);
+            draftRoadPoints = pts;
+            return pts;
+        }
+
+        function resetRoadDraft() {
+            roadDraft = { start: null, end: null, vias: [], path: [], editingId: null };
+            draftRoadPoints = [];
+            roadRouteSeq += 1;
+        }
+
+        function anaHaversineM(a, b) {
+            const R = 6371000;
+            const toR = Math.PI / 180;
+            const dLat = (b.lat - a.lat) * toR;
+            const dLon = (b.lon - a.lon) * toR;
+            const la1 = a.lat * toR;
+            const la2 = b.lat * toR;
+            const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
+            return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+        }
+
+        function distPointToSegM(p, a, b) {
+            // approx local meters
+            const latMid = ((a.lat + b.lat) / 2) * Math.PI / 180;
+            const mx = (lon) => lon * Math.cos(latMid) * 111320;
+            const my = (lat) => lat * 110540;
+            const ax = mx(a.lon), ay = my(a.lat);
+            const bx = mx(b.lon), by = my(b.lat);
+            const px = mx(p.lon), py = my(p.lat);
+            const dx = bx - ax, dy = by - ay;
+            const len2 = dx * dx + dy * dy;
+            if (len2 < 1e-6) return Math.hypot(px - ax, py - ay);
+            let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+            t = Math.max(0, Math.min(1, t));
+            return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+        }
+
+        async function fetchOsrmRoute(points) {
+            if (!points || points.length < 2) throw new Error('need points');
+            const coords = points.map((p) => `${p.lon},${p.lat}`).join(';');
+            const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            if (data.code !== 'Ok' || !data.routes?.[0]?.geometry?.coordinates?.length) {
+                throw new Error(data.message || data.code || 'no route');
+            }
+            return data.routes[0].geometry.coordinates.map(([lon, lat]) => ({ lat, lon }));
+        }
+
+        async function fetchGoogleRoute(points) {
+            if (!window.google?.maps?.DirectionsService || points.length < 2) throw new Error('no google');
+            const svc = new google.maps.DirectionsService();
+            const origin = points[0];
+            const dest = points[points.length - 1];
+            const waypoints = points.slice(1, -1).map((p) => ({
+                location: { lat: p.lat, lng: p.lon },
+                stopover: true
+            }));
+            const result = await new Promise((resolve, reject) => {
+                svc.route({
+                    origin: { lat: origin.lat, lng: origin.lon },
+                    destination: { lat: dest.lat, lng: dest.lon },
+                    waypoints,
+                    travelMode: google.maps.TravelMode.DRIVING,
+                    provideRouteAlternatives: false
+                }, (res, status) => {
+                    if (status === 'OK' && res?.routes?.[0]) resolve(res);
+                    else reject(new Error(String(status)));
+                });
+            });
+            const path = [];
+            result.routes[0].legs.forEach((leg) => {
+                (leg.steps || []).forEach((step) => {
+                    (step.path || []).forEach((ll) => {
+                        path.push({ lat: ll.lat(), lon: ll.lng() });
+                    });
+                });
+            });
+            if (path.length < 2) throw new Error('empty google path');
+            return path;
+        }
+
+        async function rebuildRoadRoute() {
+            syncDraftRoadPoints();
+            if (!roadDraft.start || !roadDraft.end) {
+                roadDraft.path = [];
+                renderAnaDraft();
+                refreshAnaStatus();
+                return;
+            }
+            const seq = ++roadRouteSeq;
+            const anchors = syncDraftRoadPoints();
+            setAnaStatus('Будую маршрут по дорогах…', false);
+            let path = null;
+            try {
+                path = await fetchOsrmRoute(anchors);
+            } catch (err1) {
+                try {
+                    path = await fetchGoogleRoute(anchors);
+                } catch (err2) {
+                    console.warn('[FALCONROUTE] route failed', err1, err2);
+                    // fallback: straight segments through anchors
+                    path = anchors.slice();
+                    if (seq === roadRouteSeq) {
+                        setAnaStatus('Автомаршрут недоступний — прямі відрізки. Можна застосувати або скоригувати.', false);
+                    }
+                }
+            }
+            if (seq !== roadRouteSeq) return;
+            roadDraft.path = path || anchors.slice();
+            renderAnaDraft();
+            refreshAnaStatus();
+        }
+
         function renderAnaDraft() {
             clearAnaDraftOverlays();
-            if (!isAnaRoadMode || draftRoadPoints.length < 1) return;
+            if (!isAnaRoadMode) return;
             const color = anaColor();
             const opacity = anaRoadOpacity();
+            const path = (roadDraft.path && roadDraft.path.length >= 2)
+                ? roadDraft.path
+                : syncDraftRoadPoints();
+            const anchors = syncDraftRoadPoints();
             if (mapType === 'google') {
-                if (draftRoadPoints.length >= 2) {
+                if (path.length >= 2) {
                     const poly = new google.maps.Polyline({
                         map,
-                        path: draftRoadPoints.map((p) => ({ lat: p.lat, lng: p.lon })),
+                        path: path.map((p) => ({ lat: p.lat, lng: p.lon })),
                         strokeColor: color,
-                        strokeOpacity: Math.min(0.7, opacity + 0.15),
+                        strokeOpacity: Math.min(0.75, opacity + 0.2),
                         strokeWeight: 12,
                         zIndex: 60,
                         clickable: false
@@ -5452,16 +5645,17 @@
                     markOwnOverlay(poly);
                     analyticsOverlays.draft.push(poly);
                 }
-                draftRoadPoints.forEach((p, idx) => {
+                anchors.forEach((p, idx) => {
+                    const label = idx === 0 ? 'A' : (idx === anchors.length - 1 && roadDraft.end ? 'B' : String(idx));
                     const m = new google.maps.Marker({
                         map,
                         position: { lat: p.lat, lng: p.lon },
-                        label: { text: String(idx + 1), color: '#0f172a', fontWeight: '700', fontSize: '10px' },
+                        label: { text: label, color: '#0f172a', fontWeight: '700', fontSize: '10px' },
                         icon: {
                             path: google.maps.SymbolPath.CIRCLE,
-                            scale: 7,
+                            scale: 8,
                             fillColor: color,
-                            fillOpacity: 0.9,
+                            fillOpacity: 0.95,
                             strokeColor: '#fff',
                             strokeWeight: 1.5
                         },
@@ -5471,21 +5665,21 @@
                     analyticsOverlays.draft.push(m);
                 });
             } else {
-                if (draftRoadPoints.length >= 2) {
+                if (path.length >= 2) {
                     analyticsOverlays.draft.push(map.entities.add({
                         polyline: {
-                            positions: draftRoadPoints.map((p) => Cesium.Cartesian3.fromDegrees(p.lon, p.lat)),
+                            positions: path.map((p) => Cesium.Cartesian3.fromDegrees(p.lon, p.lat)),
                             width: 12,
-                            material: toCesiumColor(color, Math.min(0.7, opacity + 0.15)),
+                            material: toCesiumColor(color, Math.min(0.75, opacity + 0.2)),
                             clampToGround: true
                         }
                     }));
                 }
-                draftRoadPoints.forEach((p) => {
+                anchors.forEach((p) => {
                     analyticsOverlays.draft.push(map.entities.add({
                         position: Cesium.Cartesian3.fromDegrees(p.lon, p.lat),
                         point: {
-                            pixelSize: 10,
+                            pixelSize: 11,
                             color: toCesiumColor(color, 0.95),
                             outlineColor: toCesiumColor('#ffffff'),
                             outlineWidth: 2,
@@ -5519,10 +5713,23 @@
                 main.innerHTML = `<div>${row.label}</div><div style="opacity:.7">${row.sub || ''}</div>`;
                 const actions = document.createElement('div');
                 actions.className = 'fr-item-actions';
+                if (row.kind === 'roads') {
+                    const edit = document.createElement('span');
+                    edit.textContent = '✎';
+                    edit.title = 'Скоригувати дорогу';
+                    edit.style.cssText = 'color:#93c5fd;cursor:pointer;font-weight:bold;margin-right:6px';
+                    edit.onclick = () => editAnalyticsRoad(row.id);
+                    actions.appendChild(edit);
+                }
                 const del = document.createElement('span');
                 del.textContent = '✕';
-                del.style.cssText = 'color:#f87171;cursor:pointer;font-weight:bold';
-                del.onclick = () => deleteAnalyticsItem(row.kind, row.id);
+                del.title = 'Видалити';
+                del.style.cssText = 'color:#f87171;cursor:pointer;font-weight:bold;font-size:14px;padding:2px 4px';
+                del.onclick = (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    deleteAnalyticsItem(row.kind, row.id);
+                };
                 actions.appendChild(del);
                 item.appendChild(main);
                 item.appendChild(actions);
@@ -5688,7 +5895,20 @@
                     const btn = document.getElementById('fr-ana-road');
                     if (btn) {
                         btn.classList.remove('active');
-                        btn.textContent = '🛣 Малювати дорогу';
+                        btn.textContent = '🛣 Дорога A→B';
+                    }
+                },
+                delete: () => {
+                    if (anaDeleteListener) {
+                        if (mapType === 'google') google.maps.event.removeListener(anaDeleteListener);
+                        else if (map.canvas) map.canvas.removeEventListener('click', anaDeleteListener);
+                        anaDeleteListener = null;
+                    }
+                    isAnaDeleteMode = false;
+                    const btn = document.getElementById('fr-ana-delete');
+                    if (btn) {
+                        btn.classList.remove('active');
+                        btn.textContent = '🗑 Видалити з карти';
                     }
                 }
             };
@@ -5700,7 +5920,7 @@
             const keepDraft = !!(opts && opts.keepDraft);
             clearAnaListener();
             if (!keepDraft) {
-                draftRoadPoints = [];
+                resetRoadDraft();
                 clearAnaDraftOverlays();
             }
             refreshAnaStatus();
@@ -5724,7 +5944,8 @@
             cancelMapModesForAnalytics();
             clearAnaListener('note');
             clearAnaListener('road');
-            draftRoadPoints = [];
+            clearAnaListener('delete');
+            resetRoadDraft();
             clearAnaDraftOverlays();
             if (isAnaTargetMode) {
                 clearAnaListener('target');
@@ -5775,7 +5996,8 @@
             cancelMapModesForAnalytics();
             clearAnaListener('target');
             clearAnaListener('road');
-            draftRoadPoints = [];
+            clearAnaListener('delete');
+            resetRoadDraft();
             clearAnaDraftOverlays();
             if (isAnaNoteMode) {
                 clearAnaListener('note');
@@ -5822,31 +6044,62 @@
             }
         }
 
+
+        function editAnalyticsRoad(id) {
+            const road = analyticsStore.roads?.[id];
+            if (!road) return;
+            openAccSection('analytics');
+            if (!isAnaRoadMode) beginAnaRoadDraw();
+            roadDraft.editingId = id;
+            roadDraft.start = road.start || (road.path && road.path[0]) || null;
+            roadDraft.end = road.end || (road.path && road.path[road.path.length - 1]) || null;
+            roadDraft.vias = Array.isArray(road.vias) ? road.vias.slice() : [];
+            roadDraft.path = Array.isArray(road.path) ? road.path.slice() : [];
+            syncDraftRoadPoints();
+            renderAnaDraft();
+            refreshAnaStatus();
+            setAnaStatus('Редагування дороги: клікай точки коригування або «Застосувати»', false);
+        }
+
         function beginAnaRoadDraw() {
             cancelMapModesForAnalytics();
             clearAnaListener('target');
             clearAnaListener('note');
+            clearAnaListener('delete');
             if (isAnaRoadMode) {
                 clearAnaListener('road');
-                draftRoadPoints = [];
+                resetRoadDraft();
                 clearAnaDraftOverlays();
                 refreshAnaStatus();
                 syncQuickBar();
                 return;
             }
             isAnaRoadMode = true;
-            draftRoadPoints = [];
+            resetRoadDraft();
             const btn = document.getElementById('fr-ana-road');
             if (btn) {
                 btn.classList.add('active');
-                btn.textContent = '👆 Точки дороги…';
+                btn.textContent = '👆 A → B…';
             }
             refreshAnaStatus();
             syncQuickBar();
             const onPick = (lat, lon) => {
-                draftRoadPoints.push({ lat, lon });
-                renderAnaDraft();
-                refreshAnaStatus();
+                const pt = { lat, lon };
+                if (!roadDraft.start) {
+                    roadDraft.start = pt;
+                    syncDraftRoadPoints();
+                    renderAnaDraft();
+                    refreshAnaStatus();
+                    return;
+                }
+                if (!roadDraft.end) {
+                    roadDraft.end = pt;
+                    rebuildRoadRoute();
+                    return;
+                }
+                // further clicks = via correction points
+                roadDraft.vias.push(pt);
+                rebuildRoadRoute();
             };
             if (mapType === 'google') {
                 anaRoadListener = map.addListener('click', (e) => {
@@ -5864,26 +6117,139 @@
             }
         }
 
+        function undoRoadPoint() {
+            if (!isAnaRoadMode) return;
+            if (roadDraft.vias && roadDraft.vias.length) {
+                roadDraft.vias.pop();
+                if (roadDraft.end) rebuildRoadRoute();
+                else {
+                    syncDraftRoadPoints();
+                    renderAnaDraft();
+                    refreshAnaStatus();
+                }
+                return;
+            }
+            if (roadDraft.end) {
+                roadDraft.end = null;
+                roadDraft.path = [];
+                syncDraftRoadPoints();
+                renderAnaDraft();
+                refreshAnaStatus();
+                return;
+            }
+            if (roadDraft.start) {
+                roadDraft.start = null;
+                syncDraftRoadPoints();
+                renderAnaDraft();
+                refreshAnaStatus();
+            }
+        }
+
         function finishAnaRoad() {
             if (!isAnaRoadMode) return;
-            if (draftRoadPoints.length < 2) {
-                setAnaStatus('Потрібно ≥ 2 точки для дороги', false);
+            const path = (roadDraft.path && roadDraft.path.length >= 2)
+                ? roadDraft.path.slice()
+                : syncDraftRoadPoints();
+            if (path.length < 2) {
+                setAnaStatus('Потрібно початок і кінець дороги', false);
                 return;
             }
             const item = {
-                id: anaNewId('road'),
-                path: draftRoadPoints.slice(),
+                id: roadDraft.editingId || anaNewId('road'),
+                path,
                 color: anaColor(),
                 opacity: anaRoadOpacity(),
+                start: roadDraft.start,
+                end: roadDraft.end,
+                vias: (roadDraft.vias || []).slice(),
                 createdBy: CLIENT_ID,
                 createdAt: Date.now()
             };
             analyticsStore.roads[item.id] = item;
             clearAnaListener('road');
-            draftRoadPoints = [];
+            resetRoadDraft();
             clearAnaDraftOverlays();
             renderAnalytics();
             pushAnalyticsItem('roads', item);
+            setAnaStatus('Дорогу збережено', false);
+        }
+
+        function findNearestAnalyticsHit(lat, lon, maxM) {
+            const limit = Number.isFinite(maxM) ? maxM : 90;
+            const p = { lat, lon };
+            let best = null;
+            let bestD = limit;
+            Object.values(analyticsStore.targets || {}).forEach((t) => {
+                const d = anaHaversineM(p, t);
+                if (d < bestD) {
+                    bestD = d;
+                    best = { kind: 'targets', id: t.id, d };
+                }
+            });
+            Object.values(analyticsStore.notes || {}).forEach((n) => {
+                const d = anaHaversineM(p, n);
+                if (d < bestD) {
+                    bestD = d;
+                    best = { kind: 'notes', id: n.id, d };
+                }
+            });
+            Object.values(analyticsStore.roads || {}).forEach((r) => {
+                const path = Array.isArray(r.path) ? r.path : [];
+                for (let i = 0; i < path.length - 1; i++) {
+                    const d = distPointToSegM(p, path[i], path[i + 1]);
+                    if (d < bestD) {
+                        bestD = d;
+                        best = { kind: 'roads', id: r.id, d };
+                    }
+                }
+            });
+            return best;
+        }
+
+        function beginAnaDeleteMode() {
+            cancelMapModesForAnalytics();
+            clearAnaListener('target');
+            clearAnaListener('note');
+            clearAnaListener('road');
+            resetRoadDraft();
+            clearAnaDraftOverlays();
+            if (isAnaDeleteMode) {
+                clearAnaListener('delete');
+                refreshAnaStatus();
+                syncQuickBar();
+                return;
+            }
+            isAnaDeleteMode = true;
+            const btn = document.getElementById('fr-ana-delete');
+            if (btn) {
+                btn.classList.add('active');
+                btn.textContent = '👆 Клацни об’єкт…';
+            }
+            refreshAnaStatus();
+            syncQuickBar();
+            const onPick = (lat, lon) => {
+                const hit = findNearestAnalyticsHit(lat, lon, 120);
+                if (!hit) {
+                    setAnaStatus('Поруч немає позначки для видалення', false);
+                    return;
+                }
+                deleteAnalyticsItem(hit.kind, hit.id);
+                setAnaStatus('Видалено. Клацни ще або вимкни режим.', false);
+            };
+            if (mapType === 'google') {
+                anaDeleteListener = map.addListener('click', (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                });
+            } else if (map.canvas) {
+                anaDeleteListener = (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                };
+                map.canvas.addEventListener('click', anaDeleteListener);
+            }
         }
 
         function wireAnalyticsUi() {
@@ -5891,8 +6257,10 @@
             document.getElementById('fr-ana-note')?.addEventListener('click', () => beginAnaNotePlace());
             document.getElementById('fr-ana-road')?.addEventListener('click', () => beginAnaRoadDraw());
             document.getElementById('fr-ana-road-finish')?.addEventListener('click', () => finishAnaRoad());
+            document.getElementById('fr-ana-road-undo')?.addEventListener('click', () => undoRoadPoint());
+            document.getElementById('fr-ana-delete')?.addEventListener('click', () => beginAnaDeleteMode());
             document.getElementById('fr-ana-clear')?.addEventListener('click', () => {
-                if (!countAnalytics().total && !draftRoadPoints.length) return;
+                if (!countAnalytics().total && !draftRoadPoints.length && !roadDraft.start) return;
                 if (!confirm('Скинути всю спільну аналітику (цілі, дороги, мітки)?')) return;
                 stopAnalyticsModes();
                 clearAllAnalytics();
@@ -5928,7 +6296,7 @@
                     return;
                 }
                 if (e.key === 'Escape') {
-                    if (isAnaTargetMode || isAnaNoteMode || isAnaRoadMode) {
+                    if (isAnaTargetMode || isAnaNoteMode || isAnaRoadMode || isAnaDeleteMode) {
                         e.preventDefault();
                         stopAnalyticsModes();
                     }
