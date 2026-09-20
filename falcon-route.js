@@ -819,7 +819,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-33';
+    const FR_BUILD = 'ui-clean-34';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1770,7 +1770,7 @@ function formatCoord(lat, lon, format) {
                             <span class="fr-hot-t">Точка</span>
                         </button>
                     </div>
-                    <button type="button" class="fr-mgrs" id="fr-coord-pick" data-fr-acc="coords" data-fr-click="fr-coord-pick" title="Скопіювати координати кліком на карті [Q]">
+                    <button type="button" class="fr-mgrs" id="fr-coord-pick" data-fr-click="fr-coord-pick" title="Скопіювати координати кліком на карті [Q]">
                         <span class="fr-mgrs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="1.5"/><path d="M9 8h6M9 12h6M9 16h4"/><path d="M15 3.5v4h4"/></svg></span>
                         <span>MGRS</span>
                         <span class="fr-hot-k" style="position:static;margin-left:4px">Q</span>
@@ -1778,7 +1778,7 @@ function formatCoord(lat, lon, format) {
                     <button class="fr-btn fr-btn-pick" id="fr-pick" style="display:none" aria-hidden="true">pick</button>
                     <div class="fr-hidden-actions" style="display:none" aria-hidden="true">
                         <button type="button" id="fr-q-aim" data-fr-click="fr-aim-place" data-fr-acc="ruler"></button>
-                        <button type="button" id="fr-q-mgrs" data-fr-click="fr-coord-pick" data-fr-acc="coords"></button>
+                        <button type="button" id="fr-q-mgrs" data-fr-click="fr-coord-pick"></button>
                         <button type="button" id="fr-q-place" data-fr-click="fr-flight-place" data-fr-acc="flight"></button>
                         <button type="button" id="fr-q-fly" data-fr-click="fr-flight-goto" data-fr-acc="flight"></button>
                         <button type="button" id="fr-q-attach" data-fr-click="fr-flight-attach" data-fr-acc="flight"></button>
@@ -2079,7 +2079,7 @@ function formatCoord(lat, lon, format) {
             <div class="fr-footer">
                 <div class="fr-dock" id="fr-dock">
                     <button type="button" class="fr-dock-btn" data-fr-acc="analytics" data-fr-click="fr-ana-target" title="Ціль"><span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.8"/><path d="M12 2.8v3.2M12 18v3.2M2.8 12h3.2M18 12h3.2"/></svg></span></button>
-                    <button type="button" class="fr-dock-btn" data-fr-acc="coords" data-fr-click="fr-coord-pick" title="MGRS"><span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="1.5"/><path d="M9 8h6M9 12h6M9 16h4"/><path d="M15 3.5v4h4"/></svg></span></button>
+                    <button type="button" class="fr-dock-btn" data-fr-click="fr-coord-pick" title="MGRS [Q]"><span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="1.5"/><path d="M9 8h6M9 12h6M9 16h4"/><path d="M15 3.5v4h4"/></svg></span></button>
                     <button type="button" class="fr-dock-btn" data-fr-acc="points" data-fr-click="fr-pick" title="Точка"><span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 19s5-3.8 5-8a5 5 0 1 0-10 0c0 4.2 5 8 5 8z"/><circle cx="8" cy="11" r="1.6"/><path d="M17 20s4-3 4-6.5a4 4 0 1 0-8 0c0 3.5 4 6.5 4 6.5z"/><circle cx="17" cy="13.5" r="1.3"/></svg></span></button>
                     <button type="button" class="fr-dock-btn" data-fr-acc="flight" data-fr-click="fr-flight-place" title="Борт"><span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13.5l8.5-1.2L21 5l-2.2 8.2L21 19l-9.5-2.8L3 17.5V13.5z"/></svg></span></button>
                     <button type="button" class="fr-dock-btn" data-fr-acc="flight" data-fr-click="fr-flight-attach" title="Трек"><span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9.5 8.5H8a4 4 0 0 0 0 8h1.5"/><path d="M14.5 8.5H16a4 4 0 0 1 0 8h-1.5"/><path d="M8.5 12.5h7"/></svg></span></button>
@@ -4152,7 +4152,9 @@ function formatCoord(lat, lon, format) {
                 if (!btn || !bar.contains(btn)) return;
                 e.preventDefault();
                 e.stopPropagation();
-                openAccSection(btn.getAttribute('data-fr-acc'));
+                const acc = btn.getAttribute('data-fr-acc');
+                const targetPreview = btn.getAttribute('data-fr-click');
+                if (acc && targetPreview !== 'fr-coord-pick') openAccSection(acc);
                 const cmd = btn.getAttribute('data-fr-cmd');
                 if (cmd === 'toggle-points') {
                     const cb = document.getElementById('fr-show-points');
@@ -6823,7 +6825,6 @@ function formatCoord(lat, lon, format) {
                     document.getElementById('fr-pick')?.click();
                 } else if (k === 'q') {
                     e.preventDefault();
-                    openAccSection('coords');
                     beginCoordPickMode();
                 }
             });
