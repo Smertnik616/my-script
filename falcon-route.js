@@ -685,7 +685,7 @@
         };
     }
 
-    const FR_BUILD = 'ui-shot-28';
+    const FR_BUILD = 'ui-clean-29';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1557,6 +1557,38 @@
                     border:0; background:transparent; color:#38bdf8; cursor:pointer;
                     font-size:10px; font-weight:700; text-decoration:underline;
                 }
+
+                #falcon-route-ui .fr-ico, #falcon-route-ui .fr-hot-ico, #falcon-route-ui .fr-mgrs-ico {
+                    display:inline-flex; width:20px; height:20px; color:#38bdf8;
+                }
+                #falcon-route-ui .fr-ico svg, #falcon-route-ui .fr-hot-ico svg,
+                #falcon-route-ui .fr-mgrs-ico svg, #falcon-route-ui .fr-dock-btn svg {
+                    width:100%; height:100%; display:block;
+                }
+                #falcon-route-ui .fr-hot-ico { width:18px; height:18px; }
+                #falcon-route-ui .fr-dock-btn .fr-ico { width:18px; height:18px; color:#94a3b8; margin:0 auto; }
+                #falcon-route-ui .fr-dock-btn:hover .fr-ico,
+                #falcon-route-ui .fr-dock-btn.active .fr-ico { color:#fff; }
+                #falcon-route-ui .fr-hub-tile .fr-ico { width:22px; height:22px; margin-bottom:2px; }
+                #falcon-route-ui.fr-hub-mode .fr-hub { display:grid !important; }
+                #falcon-route-ui.fr-hub-mode details.fr-acc { display:none !important; }
+                #falcon-route-ui.fr-hub-mode #fr-hub-back { display:none !important; }
+                #falcon-route-ui.fr-section-mode .fr-hub { display:none !important; }
+                #falcon-route-ui.fr-section-mode details.fr-acc { display:none !important; background:transparent; border:none; }
+                #falcon-route-ui.fr-section-mode details.fr-acc[open] {
+                    display:block !important; border:1px solid #243044; border-radius:14px;
+                    background:#121826; overflow:hidden;
+                }
+                #falcon-route-ui.fr-section-mode details.fr-acc[open] > summary {
+                    display:none !important;
+                }
+                #falcon-route-ui.fr-section-mode details.fr-acc[open] .fr-acc-body, #falcon-route-ui.fr-section-mode details.fr-acc[open] .fr-acc-body {
+                    display:flex !important; border-top:none; padding:12px;
+                }
+                #falcon-route-ui.fr-section-mode #fr-hub-back { display:block !important; }
+                #falcon-route-ui .fr-hub-lead {
+                    grid-column: 1 / -1;
+                }
             </style>
             <div class="fr-head" id="fr-drag">
                 <div class="fr-brand">
@@ -1585,32 +1617,31 @@
                     <div class="fr-hotrow" id="fr-qbar">
                         <button type="button" class="fr-hot" id="fr-q-ruler" title="Лінійка [R]" data-fr-click="fr-ruler" data-fr-acc="ruler">
                             <span class="fr-hot-k">R</span>
-                            <span class="fr-hot-ico">📏</span>
+                            <span class="fr-hot-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 16 L16 4"/><path d="M7 13l1.2-1.2M9.5 10.5l1.2-1.2M12 8l1.2-1.2"/><path d="M14 18h6v-6"/></svg></span>
                             <span class="fr-hot-t">Лінійка</span>
                         </button>
                         <button type="button" class="fr-hot" id="fr-q-atarget" title="Спільна ціль [T]" data-fr-click="fr-ana-target" data-fr-acc="analytics">
                             <span class="fr-hot-k">T</span>
-                            <span class="fr-hot-ico">◎</span>
+                            <span class="fr-hot-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-linecap="round"/></svg></span>
                             <span class="fr-hot-t">Ціль</span>
                         </button>
                         <button type="button" class="fr-hot" id="fr-q-road" title="Дорога A→B [D]" data-fr-click="fr-ana-road" data-fr-acc="analytics">
                             <span class="fr-hot-k">D</span>
-                            <span class="fr-hot-ico">🛣</span>
+                            <span class="fr-hot-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8 3l-3 18M16 3l3 18"/><path d="M12 6v3M12 12v3M12 18v2" stroke-dasharray="0"/></svg></span>
                             <span class="fr-hot-t">Дорога</span>
                         </button>
                         <button type="button" class="fr-hot" id="fr-q-pick" title="Точка збиття [P]" data-fr-click="fr-pick" data-fr-acc="points">
                             <span class="fr-hot-k">P</span>
-                            <span class="fr-hot-ico">◌</span>
+                            <span class="fr-hot-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7" stroke-dasharray="2.2 2.2"/></svg></span>
                             <span class="fr-hot-t">Точка</span>
                         </button>
                     </div>
                     <button type="button" class="fr-mgrs" id="fr-coord-pick" data-fr-acc="coords" data-fr-click="fr-coord-pick" title="Скопіювати MGRS кліком на карті">
-                        <span class="fr-mgrs-ico">📄</span>
+                        <span class="fr-mgrs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg></span>
                         <span>MGRS</span>
                     </button>
-                    <button class="fr-btn fr-btn-pick" id="fr-pick" style="display:none" aria-hidden="true">🎯 Точка на карті</button>
-                    <!-- hidden secondary actions kept for wiring -->
-                    <div class="fr-hidden-actions" style="display:none">
+                    <button class="fr-btn fr-btn-pick" id="fr-pick" style="display:none" aria-hidden="true">pick</button>
+                    <div class="fr-hidden-actions" style="display:none" aria-hidden="true">
                         <button type="button" id="fr-q-aim" data-fr-click="fr-aim-place" data-fr-acc="ruler"></button>
                         <button type="button" id="fr-q-mgrs" data-fr-click="fr-coord-pick" data-fr-acc="coords"></button>
                         <button type="button" id="fr-q-place" data-fr-click="fr-flight-place" data-fr-acc="flight"></button>
@@ -1621,50 +1652,50 @@
                     </div>
                 </div>
 
-                <div class="fr-hub"<div class="fr-hub" id="fr-hub">
-                    <div class="fr-hub-lead">Просте меню: гарячі кнопки зверху · дорога A→B сама з поворотами · усе можна видалити</div>
+                <div class="fr-hub" id="fr-hub">
+                    <div class="fr-hub-lead">Гарячі кнопки зверху · дорога A→B з поворотами · усе можна видалити</div>
                     <button type="button" class="fr-hub-tile" data-fr-acc="ruler">
-                        <span class="fr-hub-ico">📏</span>
+                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 16 L16 4"/><path d="M7 13l1.2-1.2M9.5 10.5l1.2-1.2M12 8l1.2-1.2"/><path d="M14 18h6v-6"/></svg></span>
                         <span class="fr-hub-txt">Лінійка</span>
                         <span class="fr-hub-desc">відстань і час польоту</span>
                     </button>
                     <button type="button" class="fr-hub-tile" data-fr-acc="analytics">
-                        <span class="fr-hub-ico">📊</span>
+                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 19V9M12 19V5M19 19v-7"/><path d="M3 19h18"/></svg></span>
                         <span class="fr-hub-txt">Аналітика</span>
                         <span class="fr-hub-desc">цілі, дороги, мітки для всіх</span>
                     </button>
                     <button type="button" class="fr-hub-tile" data-fr-acc="corridor">
-                        <span class="fr-hub-ico">〰</span>
+                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 8c2 0 2 4 4 4s2-4 4-4 2 4 4 4 2-4 4-4"/><path d="M3 16c2 0 2-4 4-4s2 4 4 4 2-4 4-4 2 4 4 4"/></svg></span>
                         <span class="fr-hub-txt">Коридор</span>
                         <span class="fr-hub-desc">смуга видимих точок</span>
                     </button>
                     <button type="button" class="fr-hub-tile" data-fr-acc="points">
-                        <span class="fr-hub-ico">📍</span>
+                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
                         <span class="fr-hub-txt">Точки збиття</span>
                         <span class="fr-hub-desc">точки, висота, кольори</span>
                     </button>
                     <button type="button" class="fr-hub-tile" data-fr-acc="flight">
-                        <span class="fr-hub-ico">➤</span>
+                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l8 18-8-4-8 4 8-18z"/></svg></span>
                         <span class="fr-hub-txt">Борт</span>
                         <span class="fr-hub-desc">політ і привʼязка до треку</span>
                     </button>
                     <button type="button" class="fr-hub-tile" data-fr-acc="filters">
-                        <span class="fr-hub-ico">🎛</span>
+                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg></span>
                         <span class="fr-hub-txt">Фільтри карти</span>
                         <span class="fr-hub-desc">період, збиття, засіб</span>
                     </button>
                     <button type="button" class="fr-hub-tile" data-fr-acc="coords">
-                        <span class="fr-hub-ico">🌐</span>
+                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.8 3.8 5.8 3.8 9S14.5 18.2 12 21c-2.5-2.8-3.8-5.8-3.8-9S9.5 5.8 12 3z"/></svg></span>
                         <span class="fr-hub-txt">Координати</span>
                         <span class="fr-hub-desc">DD / DM / DMS / MGRS</span>
                     </button>
                     <button type="button" class="fr-hub-tile" data-fr-acc="catalog">
-                        <span class="fr-hub-ico">📘</span>
+                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H20v16H7.5A3.5 3.5 0 0 0 4 21.5V5.5z"/><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2"/></svg></span>
                         <span class="fr-hub-txt">Каталоги</span>
                         <span class="fr-hub-desc">довідники збиття і засобів</span>
                     </button>
                     <button type="button" class="fr-hub-tile" data-fr-acc="io">
-                        <span class="fr-hub-ico">↕</span>
+                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10"/><path d="M8 8l4-4 4 4"/><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg></span>
                         <span class="fr-hub-txt">Експорт / імпорт</span>
                         <span class="fr-hub-desc">TXT · JSON · GeoJSON</span>
                     </button>
@@ -1672,7 +1703,7 @@
                 <button type="button" class="fr-back" id="fr-hub-back" style="display:none">← Назад до меню</button>
 
                 <details class="fr-acc" data-fr-acc="ruler">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">📏</span>Лінійка</span></summary>
+                    <summary><span class="fr-acc-title">Лінійка</span></summary>
                     <div class="fr-acc-body">
                         <label class="fr-check"><input type="checkbox" id="fr-ruler-show" checked> Показувати лінійку</label>
                         <div class="fr-field-grid">
@@ -1686,11 +1717,11 @@
                             </div>
                         </div>
                         <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-ruler">📏 Малювати</button>
-                            <button class="fr-btn" id="fr-ruler-toggle">👁 Сховати</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ruler">Малювати</button>
+                            <button class="fr-btn" id="fr-ruler-toggle">Сховати</button>
                         </div>
                         <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-aim-place">🎯 Ціль</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-aim-place">Ціль</button>
                             <button class="fr-btn fr-btn-danger" id="fr-aim-clear">Скинути ціль</button>
                         </div>
                         <div class="fr-hint">«Ціль» — постав точку на карті; від твого борта піде лінія з відстанню та часом (за швидкістю лінійки).</div>
@@ -1701,7 +1732,7 @@
                 </details>
 
                 <details class="fr-acc" data-fr-acc="analytics">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">📡</span>Аналітика</span></summary>
+                    <summary><span class="fr-acc-title">Аналітика</span></summary>
                     <div class="fr-acc-body">
                         <div class="fr-hint">Спільна аналітика для всіх у кімнаті: яскрава <b>ціль</b> (з текстом або без), напівпрозора <b>дорога</b> для маршрутів бортів (початок+кінець → сама з поворотами, можна коригувати), мітки. Усе можна <b>видаляти</b> зі списку або з карти.</div>
                         <div class="fr-field">
@@ -1719,16 +1750,16 @@
                             </div>
                         </div>
                         <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-ana-target">◎ Ціль польоту</button>
-                            <button class="fr-btn fr-btn-pick" id="fr-ana-note">📌 Мітка + текст</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-target">Ціль польоту</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-note">Мітка + текст</button>
                         </div>
                         <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-ana-road">🛣 Дорога A→B</button>
-                            <button class="fr-btn" id="fr-ana-road-finish">✓ Застосувати</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-road">Дорога A→B</button>
+                            <button class="fr-btn" id="fr-ana-road-finish">Застосувати</button>
                         </div>
                         <div class="fr-grid">
-                            <button class="fr-btn" id="fr-ana-road-undo">↩ Скасувати точку</button>
-                            <button class="fr-btn fr-btn-danger" id="fr-ana-delete">🗑 Видалити з карти</button>
+                            <button class="fr-btn" id="fr-ana-road-undo">Скасувати точку</button>
+                            <button class="fr-btn fr-btn-danger" id="fr-ana-delete">Видалити з карти</button>
                         </div>
                         <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ana-clear">Скинути всю аналітику</button>
                         <div class="fr-status muted" id="fr-ana-status">Немає спільних позначок</div>
@@ -1737,7 +1768,7 @@
                 </details>
 
                 <details class="fr-acc" data-fr-acc="corridor">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">🛤</span>Коридор</span></summary>
+                    <summary><span class="fr-acc-title">Коридор</span></summary>
                     <div class="fr-acc-body">
                         <div class="fr-hint">Обмежує видимі точки смугою на карті (лише на цей запуск).</div>
                         <div class="fr-row">
@@ -1745,7 +1776,7 @@
                             <input type="number" id="fr-corridor-w" value="${settings.corridorWidth}" step="100" min="100">
                         </div>
                         <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-corridor">📐 Малювати</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-corridor">Малювати</button>
                             <button class="fr-btn fr-btn-danger" id="fr-corridor-clear">Скинути</button>
                         </div>
                         <div class="fr-status muted" id="fr-corridor-status">Коридор не задано</div>
@@ -1753,9 +1784,9 @@
                 </details>
 
                 <details class="fr-acc" data-fr-acc="points">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">📍</span>Точки збиття</span></summary>
+                    <summary><span class="fr-acc-title">Точки збиття</span></summary>
                     <div class="fr-acc-body">
-                        <button class="fr-btn fr-btn-pick fr-btn-wide" id="fr-pick-visible" data-fr-click="fr-pick">🎯 Поставити точку на карті</button>
+                        <button class="fr-btn fr-btn-pick fr-btn-wide" id="fr-pick-visible" data-fr-click="fr-pick">Поставити точку на карті</button>
                         <div class="fr-field-grid">
                             <div class="fr-field">
                                 <label for="fr-means">Збиття</label>
@@ -1775,14 +1806,14 @@
                             </div>
                         </div>
                         <textarea id="fr-input" placeholder="Встав координати:&#10;48.4501, 34.9802&#10;або з висотою: 48.45, 34.98, 150"></textarea>
-                        <button class="fr-btn fr-btn-wide fr-btn-primary" id="fr-add">＋ Побудувати точки</button>
+                        <button class="fr-btn fr-btn-wide fr-btn-primary" id="fr-add">Побудувати точки</button>
                         <div class="fr-count" id="fr-count"><span>Точок: 0</span></div>
                         <div class="fr-list" id="fr-container"></div>
                     </div>
                 </details>
 
                 <details class="fr-acc" data-fr-acc="flight">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">✈</span>Борт</span></summary>
+                    <summary><span class="fr-acc-title">Борт</span></summary>
                     <div class="fr-acc-body">
                         <div class="fr-hint">«Летіти» — рух за курсом. «Прикріпити до треку» — слідувати за стрілкою на карті-хості. Швидкість спільна з лінійкою.</div>
                         <div class="fr-field-grid">
@@ -1796,11 +1827,11 @@
                             </div>
                         </div>
                         <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-flight-place">📍 Поставити</button>
-                            <button class="fr-btn fr-btn-ok" id="fr-flight-goto">✈ Летіти</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-flight-place">Поставити</button>
+                            <button class="fr-btn fr-btn-ok" id="fr-flight-goto">Летіти</button>
                         </div>
-                        <button class="fr-btn fr-btn-wide" id="fr-flight-attach">🔗 Прикріпити до треку</button>
-                        <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-flight-stop">⏹ Прибрати борт</button>
+                        <button class="fr-btn fr-btn-wide" id="fr-flight-attach">Прикріпити до треку</button>
+                        <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-flight-stop">Прибрати борт</button>
                         <div class="fr-status muted" id="fr-flight-status">Борт не виставлено</div>
                         <div class="fr-field">
                             <label for="fr-range-target">Дистанція до борта</label>
@@ -1814,7 +1845,7 @@
                 </details>
 
                 <details class="fr-acc" data-fr-acc="filters">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">🎛</span>Фільтри карти</span></summary>
+                    <summary><span class="fr-acc-title">Фільтри карти</span></summary>
                     <div class="fr-acc-body">
                         <label class="fr-check"><input type="checkbox" id="fr-show-points" ${settings.showPoints ? 'checked' : ''}> Показувати точки на карті</label>
                         <div class="fr-field">
@@ -1841,7 +1872,7 @@
                 </details>
 
                 <details class="fr-acc" data-fr-acc="coords">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">🗺</span>Координати</span></summary>
+                    <summary><span class="fr-acc-title">Координати</span></summary>
                     <div class="fr-acc-body">
                         <div class="fr-field">
                             <label for="fr-coord-format">Формат</label>
@@ -1852,12 +1883,12 @@
                                 <option value="mgrs">MGRS</option>
                             </select>
                         </div>
-                        <button class="fr-btn fr-btn-wide" id="fr-copy">📋 Скопіювати видимі</button>
+                        <button class="fr-btn fr-btn-wide" id="fr-copy">Скопіювати видимі</button>
                     </div>
                 </details>
 
                 <details class="fr-acc" data-fr-acc="catalog">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">⚙</span>Каталоги</span></summary>
+                    <summary><span class="fr-acc-title">Каталоги</span></summary>
                     <div class="fr-acc-body">
                         <details class="fr-details">
                             <summary>Збиття / кольори</summary>
@@ -1880,7 +1911,7 @@
                 </details>
 
                 <details class="fr-acc" data-fr-acc="io">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">💾</span>Експорт / імпорт</span></summary>
+                    <summary><span class="fr-acc-title">Експорт / імпорт</span></summary>
                     <div class="fr-acc-body">
                         <div class="fr-field">
                             <label for="fr-format">Формат файлу</label>
@@ -1891,8 +1922,8 @@
                             </select>
                         </div>
                         <div class="fr-grid">
-                            <button class="fr-btn" id="fr-export">⬇ Завантажити</button>
-                            <button class="fr-btn" id="fr-import">⬆ Імпортувати</button>
+                            <button class="fr-btn" id="fr-export">Завантажити</button>
+                            <button class="fr-btn" id="fr-import">Імпортувати</button>
                             <input type="file" id="fr-file" accept=".txt,.json,.geojson" style="display:none">
                         </div>
                     </div>
@@ -1900,12 +1931,12 @@
             </div>
             <div class="fr-footer">
                 <div class="fr-dock" id="fr-dock">
-                    <button type="button" class="fr-dock-btn" data-fr-acc="analytics" data-fr-click="fr-ana-target" title="Ціль">◎</button>
-                    <button type="button" class="fr-dock-btn" data-fr-acc="coords" data-fr-click="fr-coord-pick" title="MGRS">📄</button>
-                    <button type="button" class="fr-dock-btn" data-fr-acc="points" data-fr-click="fr-pick" title="Точка">📍</button>
-                    <button type="button" class="fr-dock-btn" data-fr-acc="flight" data-fr-click="fr-flight-place" title="Борт">✈</button>
-                    <button type="button" class="fr-dock-btn" data-fr-acc="flight" data-fr-click="fr-flight-attach" title="Трек">🔗</button>
-                    <button type="button" class="fr-dock-btn" id="fr-dock-eye" data-fr-cmd="toggle-points" data-fr-acc="filters" title="Показати / сховати точки">👁</button>
+                    <button type="button" class="fr-dock-btn" data-fr-acc="analytics" data-fr-click="fr-ana-target" title="Ціль"><span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke-linecap="round"/></svg></span></button>
+                    <button type="button" class="fr-dock-btn" data-fr-acc="coords" data-fr-click="fr-coord-pick" title="MGRS"><span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg></span></button>
+                    <button type="button" class="fr-dock-btn" data-fr-acc="points" data-fr-click="fr-pick" title="Точка"><span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span></button>
+                    <button type="button" class="fr-dock-btn" data-fr-acc="flight" data-fr-click="fr-flight-place" title="Борт"><span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 12l18-7-5 9 1 5-4-2-4 2 1-5-7-2z"/></svg></span></button>
+                    <button type="button" class="fr-dock-btn" data-fr-acc="flight" data-fr-click="fr-flight-attach" title="Трек"><span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9 8H7a4 4 0 0 0 0 8h2"/><path d="M15 8h2a4 4 0 0 1 0 8h-2"/><path d="M8 12h8"/></svg></span></button>
+                    <button type="button" class="fr-dock-btn" id="fr-dock-eye" data-fr-cmd="toggle-points" data-fr-acc="filters" title="Показати / сховати точки"><span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span></button>
                 </div>
                 <div class="fr-foot-meta">
                     <div class="fr-sync" id="fr-sync">${FIREBASE_ENABLED ? 'Firebase: підключення…' : 'Локальний режим'}</div>
@@ -2389,7 +2420,7 @@
             const btn = document.getElementById('fr-aim-place');
             if (btn) {
                 btn.classList.remove('active');
-                btn.textContent = '🎯 Ціль';
+                btn.textContent = 'Ціль';
             }
             if (aimPlaceListener) {
                 if (mapType === 'google') google.maps.event.removeListener(aimPlaceListener);
@@ -2768,7 +2799,7 @@
             const cb = document.getElementById('fr-ruler-show');
             const btn = document.getElementById('fr-ruler-toggle');
             if (cb) cb.checked = showRuler;
-            if (btn) btn.textContent = showRuler ? '👁 Сховати' : '👁 Показати';
+            if (btn) btn.textContent = showRuler ? 'Сховати' : 'Показати';
         }
 
         function setShowRuler(on) {
@@ -3256,7 +3287,7 @@
             const btn = document.getElementById('fr-ruler');
             if (btn) {
                 btn.classList.remove('active');
-                btn.textContent = '📏 Малювати';
+                btn.textContent = 'Малювати';
             }
             if (rulerListener) {
                 if (mapType === 'google') {
@@ -3809,7 +3840,7 @@
                 btn.textContent = '⏸ Стоп';
             } else {
                 btn.classList.remove('active');
-                btn.textContent = '✈ Летіти';
+                btn.textContent = 'Летіти';
             }
             syncQuickBar();
         }
@@ -3825,7 +3856,7 @@
                 btn.textContent = '👆 Клацни стрілку треку…';
             } else {
                 btn.classList.remove('active');
-                btn.textContent = '🔗 Прикріпити до треку';
+                btn.textContent = 'Прикріпити до треку';
             }
             syncQuickBar();
         }
@@ -5107,7 +5138,7 @@
             const placeBtn = document.getElementById('fr-flight-place');
             if (placeBtn) {
                 placeBtn.classList.remove('active');
-                placeBtn.textContent = '📍 Поставити';
+                placeBtn.textContent = 'Поставити';
             }
             updateCruiseBtn();
             if (placeAircraftListener) {
@@ -6107,7 +6138,7 @@
                     const btn = document.getElementById('fr-ana-target');
                     if (btn) {
                         btn.classList.remove('active');
-                        btn.textContent = '◎ Ціль польоту';
+                        btn.textContent = 'Ціль польоту';
                     }
                 },
                 note: () => {
@@ -6120,7 +6151,7 @@
                     const btn = document.getElementById('fr-ana-note');
                     if (btn) {
                         btn.classList.remove('active');
-                        btn.textContent = '📌 Мітка + текст';
+                        btn.textContent = 'Мітка + текст';
                     }
                 },
                 road: () => {
@@ -6133,7 +6164,7 @@
                     const btn = document.getElementById('fr-ana-road');
                     if (btn) {
                         btn.classList.remove('active');
-                        btn.textContent = '🛣 Дорога A→B';
+                        btn.textContent = 'Дорога A→B';
                     }
                 },
                 delete: () => {
@@ -6146,7 +6177,7 @@
                     const btn = document.getElementById('fr-ana-delete');
                     if (btn) {
                         btn.classList.remove('active');
-                        btn.textContent = '🗑 Видалити з карти';
+                        btn.textContent = 'Видалити з карти';
                     }
                 }
             };
