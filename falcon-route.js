@@ -685,7 +685,7 @@
         };
     }
 
-    const FR_BUILD = 'ui-hub-order-27';
+    const FR_BUILD = 'ui-shot-28';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1175,8 +1175,8 @@
         panel.style.cssText = `
             position: fixed; top: 24px; right: 24px; width: 380px;
             height: min(92vh, calc(100vh - 36px)); max-height: calc(100vh - 36px);
-            background: #12141c; color: #e8eaef; border: 1px solid #2c3140;
-            border-radius: 14px; box-shadow: 0 18px 48px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.03) inset;
+            background: #0b1018; color: #e8eaef; border: 1px solid #1f2937;
+            border-radius: 16px; box-shadow: 0 18px 48px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.03) inset;
             font-family: "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 12px;
             z-index: 9999999; user-select: none; display: flex; flex-direction: column;
             overflow: hidden;
@@ -1465,52 +1465,211 @@
                 .fr-ana-label.fr-ana-note .fr-ana-chip {
                     color: #e0f2fe; border-color: rgba(56,189,248,.7);
                 }
+
+                /* —— UI shot layout —— */
+                #falcon-route-ui .fr-head {
+                    background: #0f141d !important; padding: 12px 12px 10px !important;
+                    border-bottom: 1px solid #1f2937 !important;
+                }
+                #falcon-route-ui .fr-brand { display:flex; align-items:center; gap:10px; min-width:0; }
+                #falcon-route-ui .fr-logo {
+                    width: 34px; height: 34px; border-radius: 10px;
+                    background: #1a1220; border: 1px solid #3f2a1a;
+                    display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto;
+                }
+                #falcon-route-ui .fr-head-name { font-size: 15px !important; font-weight: 780 !important; color:#f8fafc !important; }
+                #falcon-route-ui .fr-head-meta { color:#64748b !important; }
+                #falcon-route-ui .fr-badge {
+                    display:inline-flex; align-items:center; gap:6px;
+                    background:#121826; border:1px solid #243044; border-radius:999px;
+                    padding:4px 10px; color:#e2e8f0; font-size:11px; font-weight:700;
+                }
+                #falcon-route-ui .fr-badge-dot {
+                    width:7px; height:7px; border-radius:50%; background:#22c55e;
+                    box-shadow:0 0 8px rgba(34,197,94,.7);
+                }
+                #falcon-route-ui .fr-body { background:#0b1018 !important; gap:10px !important; }
+                #falcon-route-ui .fr-quick {
+                    background:transparent !important; border:none !important; padding:0 !important; gap:8px !important;
+                }
+                #falcon-route-ui .fr-hotrow {
+                    /* hotkeys row */
+                    display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
+                }
+                #falcon-route-ui .fr-hot {
+                    position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
+                    gap:4px; min-height:58px; border-radius:12px; border:1px solid #2a3548;
+                    background:#121826; color:#e2e8f0; cursor:pointer; padding:8px 4px;
+                }
+                #falcon-route-ui .fr-hot:hover, #falcon-route-ui .fr-hot.active {
+                    border-color:#38bdf8; background:#152033;
+                }
+                #falcon-route-ui .fr-hot-k {
+                    position:absolute; top:5px; right:7px; font-size:10px; font-weight:800; color:#7dd3fc;
+                }
+                #falcon-route-ui .fr-hot-ico { font-size:16px; line-height:1; color:#7dd3fc; }
+                #falcon-route-ui .fr-hot-t { font-size:10px; font-weight:650; color:#cbd5e1; }
+                #falcon-route-ui .fr-mgrs {
+                    width:100%; min-height:40px; border-radius:12px; border:1px solid #2a3548;
+                    background:#152033; color:#e2e8f0; display:flex; align-items:center; justify-content:center;
+                    gap:8px; font-weight:700; cursor:pointer;
+                }
+                #falcon-route-ui .fr-mgrs:hover, #falcon-route-ui .fr-mgrs.active { border-color:#38bdf8; }
+                #falcon-route-ui .fr-hub {
+                    display:grid !important; grid-template-columns:repeat(3,1fr); gap:8px;
+                }
+                #falcon-route-ui .fr-hub-lead {
+                    grid-column:1 / -1; font-size:11px; line-height:1.35; color:#94a3b8;
+                    background:#121826; border:1px solid #1f2937; border-radius:10px; padding:8px 10px;
+                }
+                #falcon-route-ui .fr-hub-tile {
+                    min-height:86px !important; align-items:flex-start !important; justify-content:flex-start !important;
+                    padding:12px 10px !important; gap:6px !important; background:#121826 !important;
+                    border:1px solid #243044 !important; border-radius:14px !important;
+                }
+                #falcon-route-ui .fr-hub-ico { font-size:18px !important; color:#38bdf8 !important; }
+                #falcon-route-ui .fr-hub-txt { font-size:12px !important; font-weight:750 !important; color:#f1f5f9 !important; text-align:left !important; }
+                #falcon-route-ui .fr-hub-desc { font-size:10px; color:#64748b; text-align:left; line-height:1.25; }
+                #falcon-route-ui .fr-back {
+                    width:100%; min-height:36px; border-radius:10px; border:1px solid #334155;
+                    background:#152033; color:#e2e8f0; font-weight:700; cursor:pointer;
+                }
+                #falcon-route-ui .fr-footer {
+                    background:#0c121b !important; border-top:1px solid #1f2937 !important;
+                    padding:8px 10px 10px !important; gap:8px !important;
+                }
+                #falcon-route-ui .fr-dock {
+                    display:grid; grid-template-columns:repeat(6,1fr); gap:6px;
+                    background:#121826; border:1px solid #243044; border-radius:12px; padding:6px;
+                }
+                #falcon-route-ui .fr-dock-btn {
+                    min-height:34px; border:0; border-radius:8px; background:transparent;
+                    color:#94a3b8; cursor:pointer; font-size:15px;
+                }
+                #falcon-route-ui .fr-dock-btn:hover, #falcon-route-ui .fr-dock-btn.active {
+                    background:#1d4ed8; color:#fff;
+                }
+                #falcon-route-ui .fr-foot-meta {
+                    display:flex; align-items:center; justify-content:space-between; gap:8px;
+                }
+                #falcon-route-ui .fr-foot-right { display:flex; align-items:center; gap:8px; }
+                #falcon-route-ui .fr-linkbtn {
+                    border:0; background:transparent; color:#38bdf8; cursor:pointer;
+                    font-size:10px; font-weight:700; text-decoration:underline;
+                }
             </style>
             <div class="fr-head" id="fr-drag">
-                <div class="fr-head-title">
-                    <span class="fr-head-name">🦅 FalconRoute</span>
-                    <span class="fr-head-meta">v2 · ${FR_BUILD}</span>
+                <div class="fr-brand">
+                    <div class="fr-logo" aria-hidden="true">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                            <path d="M3 14c4-1 7-6 9-11 2 5 5 10 9 11-3 1-5 4-9 8-4-4-6-7-9-8z" fill="#f97316"/>
+                            <path d="M12 5v14" stroke="#fdba74" stroke-width="1.4" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <div class="fr-head-title">
+                        <span class="fr-head-name">FalconRoute</span>
+                        <span class="fr-head-meta">v2 · ${FR_BUILD}</span>
+                    </div>
                 </div>
                 <div class="fr-head-actions">
+                    <div class="fr-badge" id="fr-license-badge" title="Ліцензія">
+                        <span class="fr-badge-dot"></span>
+                        <span id="fr-license-badge-text">${(activeLicenseMeta?.name || activeLicenseKey || '—').toString().slice(0,10)}${activeLicenseMeta?.room ? ' · ' + String(activeLicenseMeta.room).slice(0,1).toUpperCase() : ''}</span>
+                    </div>
                     <button type="button" class="fr-icon-btn" id="fr-toggle" title="Згорнути / розгорнути">─</button>
                 </div>
             </div>
+
             <div class="fr-body" id="fr-main">
                 <div class="fr-quick">
-                    <div class="fr-qlabel">Гарячі команди <span class="fr-hotkeys-hint">R · T · D · P</span></div>
-                    <div class="fr-qbar fr-qbar-main" id="fr-qbar">
-                        <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-ruler" title="Лінійка [R]" data-fr-click="fr-ruler" data-fr-acc="ruler"><span class="fr-qk">R</span><span class="fr-qt">Лінійка</span></button>
-                        <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-atarget" title="Спільна ціль польоту [T]" data-fr-click="fr-ana-target" data-fr-acc="analytics"><span class="fr-qk">T</span><span class="fr-qt">Ціль</span></button>
-                        <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-road" title="Підсвітка дороги [D]" data-fr-click="fr-ana-road" data-fr-acc="analytics"><span class="fr-qk">D</span><span class="fr-qt">Дорога</span></button>
-                        <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-pick" title="Точка збиття [P]" data-fr-click="fr-pick" data-fr-acc="points"><span class="fr-qk">P</span><span class="fr-qt">Точка</span></button>
+                    <div class="fr-hotrow" id="fr-qbar">
+                        <button type="button" class="fr-hot" id="fr-q-ruler" title="Лінійка [R]" data-fr-click="fr-ruler" data-fr-acc="ruler">
+                            <span class="fr-hot-k">R</span>
+                            <span class="fr-hot-ico">📏</span>
+                            <span class="fr-hot-t">Лінійка</span>
+                        </button>
+                        <button type="button" class="fr-hot" id="fr-q-atarget" title="Спільна ціль [T]" data-fr-click="fr-ana-target" data-fr-acc="analytics">
+                            <span class="fr-hot-k">T</span>
+                            <span class="fr-hot-ico">◎</span>
+                            <span class="fr-hot-t">Ціль</span>
+                        </button>
+                        <button type="button" class="fr-hot" id="fr-q-road" title="Дорога A→B [D]" data-fr-click="fr-ana-road" data-fr-acc="analytics">
+                            <span class="fr-hot-k">D</span>
+                            <span class="fr-hot-ico">🛣</span>
+                            <span class="fr-hot-t">Дорога</span>
+                        </button>
+                        <button type="button" class="fr-hot" id="fr-q-pick" title="Точка збиття [P]" data-fr-click="fr-pick" data-fr-acc="points">
+                            <span class="fr-hot-k">P</span>
+                            <span class="fr-hot-ico">◌</span>
+                            <span class="fr-hot-t">Точка</span>
+                        </button>
                     </div>
-                    <div class="fr-qbar fr-qbar-sec">
-                        <button type="button" class="fr-qbtn" id="fr-q-aim" title="Особиста ціль (лінія від борта)" data-fr-click="fr-aim-place" data-fr-acc="ruler">◎</button>
-                        <button type="button" class="fr-qbtn" id="fr-q-mgrs" title="Скопіювати MGRS" data-fr-click="fr-coord-pick" data-fr-acc="coords">📋</button>
-                        <button type="button" class="fr-qbtn" id="fr-q-place" title="Поставити борт" data-fr-click="fr-flight-place" data-fr-acc="flight">📍</button>
-                        <button type="button" class="fr-qbtn fr-q-go" id="fr-q-fly" title="Летіти / стоп" data-fr-click="fr-flight-goto" data-fr-acc="flight">✈</button>
-                        <button type="button" class="fr-qbtn" id="fr-q-attach" title="Прикріпити до треку" data-fr-click="fr-flight-attach" data-fr-acc="flight">🔗</button>
-                        <button type="button" class="fr-qbtn" id="fr-q-points" title="Показати / сховати точки" data-fr-cmd="toggle-points" data-fr-acc="filters">👁</button>
-                    </div>
-                    <div class="fr-quick-row fr-quick-row-single">
-                        <button class="fr-btn fr-btn-pick" id="fr-pick" style="display:none" aria-hidden="true">🎯 Точка на карті</button>
-                        <button class="fr-btn fr-btn-pick fr-btn-wide" id="fr-coord-pick">📋 MGRS</button>
+                    <button type="button" class="fr-mgrs" id="fr-coord-pick" data-fr-acc="coords" data-fr-click="fr-coord-pick" title="Скопіювати MGRS кліком на карті">
+                        <span class="fr-mgrs-ico">📄</span>
+                        <span>MGRS</span>
+                    </button>
+                    <button class="fr-btn fr-btn-pick" id="fr-pick" style="display:none" aria-hidden="true">🎯 Точка на карті</button>
+                    <!-- hidden secondary actions kept for wiring -->
+                    <div class="fr-hidden-actions" style="display:none">
+                        <button type="button" id="fr-q-aim" data-fr-click="fr-aim-place" data-fr-acc="ruler"></button>
+                        <button type="button" id="fr-q-mgrs" data-fr-click="fr-coord-pick" data-fr-acc="coords"></button>
+                        <button type="button" id="fr-q-place" data-fr-click="fr-flight-place" data-fr-acc="flight"></button>
+                        <button type="button" id="fr-q-fly" data-fr-click="fr-flight-goto" data-fr-acc="flight"></button>
+                        <button type="button" id="fr-q-attach" data-fr-click="fr-flight-attach" data-fr-acc="flight"></button>
+                        <button type="button" id="fr-q-points" data-fr-cmd="toggle-points" data-fr-acc="filters"></button>
+                        <button type="button" id="fr-q-note" data-fr-click="fr-ana-note" data-fr-acc="analytics"></button>
                     </div>
                 </div>
 
-
-                <div class="fr-hub" id="fr-hub">
-                    <button type="button" class="fr-hub-tile" data-fr-acc="ruler"><span class="fr-hub-ico">📏</span><span class="fr-hub-txt">Лінійка</span></button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="analytics"><span class="fr-hub-ico">📊</span><span class="fr-hub-txt">Аналітика</span></button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="corridor"><span class="fr-hub-ico">〰</span><span class="fr-hub-txt">Коридор</span></button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="points"><span class="fr-hub-ico">📍</span><span class="fr-hub-txt">Точки збиття</span></button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="flight"><span class="fr-hub-ico">✈</span><span class="fr-hub-txt">Борт</span></button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="filters"><span class="fr-hub-ico">🎛</span><span class="fr-hub-txt">Фільтри карти</span></button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="coords"><span class="fr-hub-ico">🌐</span><span class="fr-hub-txt">Координати</span></button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="catalog"><span class="fr-hub-ico">🗂</span><span class="fr-hub-txt">Каталоги</span></button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="io"><span class="fr-hub-ico">↕</span><span class="fr-hub-txt">Експорт / імпорт</span></button>
+                <div class="fr-hub"<div class="fr-hub" id="fr-hub">
+                    <div class="fr-hub-lead">Просте меню: гарячі кнопки зверху · дорога A→B сама з поворотами · усе можна видалити</div>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="ruler">
+                        <span class="fr-hub-ico">📏</span>
+                        <span class="fr-hub-txt">Лінійка</span>
+                        <span class="fr-hub-desc">відстань і час польоту</span>
+                    </button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="analytics">
+                        <span class="fr-hub-ico">📊</span>
+                        <span class="fr-hub-txt">Аналітика</span>
+                        <span class="fr-hub-desc">цілі, дороги, мітки для всіх</span>
+                    </button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="corridor">
+                        <span class="fr-hub-ico">〰</span>
+                        <span class="fr-hub-txt">Коридор</span>
+                        <span class="fr-hub-desc">смуга видимих точок</span>
+                    </button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="points">
+                        <span class="fr-hub-ico">📍</span>
+                        <span class="fr-hub-txt">Точки збиття</span>
+                        <span class="fr-hub-desc">точки, висота, кольори</span>
+                    </button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="flight">
+                        <span class="fr-hub-ico">➤</span>
+                        <span class="fr-hub-txt">Борт</span>
+                        <span class="fr-hub-desc">політ і привʼязка до треку</span>
+                    </button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="filters">
+                        <span class="fr-hub-ico">🎛</span>
+                        <span class="fr-hub-txt">Фільтри карти</span>
+                        <span class="fr-hub-desc">період, збиття, засіб</span>
+                    </button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="coords">
+                        <span class="fr-hub-ico">🌐</span>
+                        <span class="fr-hub-txt">Координати</span>
+                        <span class="fr-hub-desc">DD / DM / DMS / MGRS</span>
+                    </button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="catalog">
+                        <span class="fr-hub-ico">📘</span>
+                        <span class="fr-hub-txt">Каталоги</span>
+                        <span class="fr-hub-desc">довідники збиття і засобів</span>
+                    </button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="io">
+                        <span class="fr-hub-ico">↕</span>
+                        <span class="fr-hub-txt">Експорт / імпорт</span>
+                        <span class="fr-hub-desc">TXT · JSON · GeoJSON</span>
+                    </button>
                 </div>
-                <button type="button" class="fr-btn fr-btn-wide" id="fr-hub-back" style="display:none;margin-bottom:8px">← До меню</button>
+                <button type="button" class="fr-back" id="fr-hub-back" style="display:none">← Назад до меню</button>
 
                 <details class="fr-acc" data-fr-acc="ruler">
                     <summary><span class="fr-acc-title"><span class="fr-acc-ico">📏</span>Лінійка</span></summary>
@@ -1544,7 +1703,7 @@
                 <details class="fr-acc" data-fr-acc="analytics">
                     <summary><span class="fr-acc-title"><span class="fr-acc-ico">📡</span>Аналітика</span></summary>
                     <div class="fr-acc-body">
-                        <div class="fr-hint">Спільні цілі/дороги/мітки бачать усі в кімнаті. Дорога: клік <b>початок</b> і <b>кінець</b> — маршрут з поворотами сам; ще кліки — коригування через точку.</div>
+                        <div class="fr-hint">Спільна аналітика для всіх у кімнаті: яскрава <b>ціль</b> (з текстом або без), напівпрозора <b>дорога</b> для маршрутів бортів (початок+кінець → сама з поворотами, можна коригувати), мітки. Усе можна <b>видаляти</b> зі списку або з карти.</div>
                         <div class="fr-field">
                             <label for="fr-ana-text">Текст (опційно)</label>
                             <input type="text" id="fr-ana-text" placeholder="Назва цілі / мітки" maxlength="48">
@@ -1740,10 +1899,20 @@
                 </details>
             </div>
             <div class="fr-footer">
-                <div class="fr-sync" id="fr-sync">${FIREBASE_ENABLED ? 'Firebase: підключення…' : 'Локальний режим (без Firebase)'}</div>
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px">
-                    <div class="fr-label" id="fr-license-status" style="margin:0;opacity:.9">Ключ: ${activeLicenseKey || '—'}${activeLicenseMeta?.name ? ' · ' + activeLicenseMeta.name : ''}</div>
-                    <button type="button" class="fr-btn" id="fr-license-logout" style="min-height:28px !important;padding:4px 8px !important;font-size:10px !important">Змінити ключ</button>
+                <div class="fr-dock" id="fr-dock">
+                    <button type="button" class="fr-dock-btn" data-fr-acc="analytics" data-fr-click="fr-ana-target" title="Ціль">◎</button>
+                    <button type="button" class="fr-dock-btn" data-fr-acc="coords" data-fr-click="fr-coord-pick" title="MGRS">📄</button>
+                    <button type="button" class="fr-dock-btn" data-fr-acc="points" data-fr-click="fr-pick" title="Точка">📍</button>
+                    <button type="button" class="fr-dock-btn" data-fr-acc="flight" data-fr-click="fr-flight-place" title="Борт">✈</button>
+                    <button type="button" class="fr-dock-btn" data-fr-acc="flight" data-fr-click="fr-flight-attach" title="Трек">🔗</button>
+                    <button type="button" class="fr-dock-btn" id="fr-dock-eye" data-fr-cmd="toggle-points" data-fr-acc="filters" title="Показати / сховати точки">👁</button>
+                </div>
+                <div class="fr-foot-meta">
+                    <div class="fr-sync" id="fr-sync">${FIREBASE_ENABLED ? 'Firebase: підключення…' : 'Локальний режим'}</div>
+                    <div class="fr-foot-right">
+                        <span class="fr-label" id="fr-license-status">${activeLicenseKey || '—'}${activeLicenseMeta?.name ? ' · ' + activeLicenseMeta.name : ''}</span>
+                        <button type="button" class="fr-linkbtn" id="fr-license-logout">ключ</button>
+                    </div>
                 </div>
             </div>
         `;
@@ -3698,6 +3867,9 @@
                 const s = document.getElementById(sid);
                 if (!q || !s) return;
                 q.classList.toggle('active', s.classList.contains('active'));
+                if (q.classList.contains('fr-hot') || q.classList.contains('fr-mgrs')) {
+                    /* visual hot state */
+                }
             });
             const pointsBtn = document.getElementById('fr-q-points');
             const showCb = document.getElementById('fr-show-points');
@@ -3717,6 +3889,9 @@
             if (qTarget) qTarget.classList.toggle('active', isAnaTargetMode);
             const qRoad = document.getElementById('fr-q-road');
             if (qRoad) qRoad.classList.toggle('active', isAnaRoadMode);
+            const eye = document.getElementById('fr-dock-eye');
+            const showCb2 = document.getElementById('fr-show-points');
+            if (eye && showCb2) eye.classList.toggle('active', !!showCb2.checked);
             const qNote = document.getElementById('fr-q-note');
             if (qNote) qNote.classList.toggle('active', isAnaNoteMode);
             const delBtn = document.getElementById('fr-ana-delete');
@@ -3732,7 +3907,7 @@
             if (!bar || bar.__frWired) return;
             bar.__frWired = true;
             bar.addEventListener('click', (e) => {
-                const btn = e.target?.closest?.('.fr-qbtn');
+                const btn = e.target?.closest?.('.fr-qbtn, .fr-hot, .fr-mgrs');
                 if (!btn || !bar.contains(btn)) return;
                 e.preventDefault();
                 e.stopPropagation();
@@ -5146,6 +5321,27 @@
             openAccSection(tile.getAttribute('data-fr-acc'));
         });
         document.getElementById('fr-hub-back')?.addEventListener('click', () => showHubMode());
+
+        document.getElementById('fr-dock')?.addEventListener('click', (e) => {
+            const btn = e.target?.closest?.('.fr-dock-btn');
+            if (!btn || !document.getElementById('fr-dock')?.contains(btn)) return;
+            e.preventDefault();
+            openAccSection(btn.getAttribute('data-fr-acc'));
+            const cmd = btn.getAttribute('data-fr-cmd');
+            if (cmd === 'toggle-points') {
+                const cb = document.getElementById('fr-show-points');
+                if (cb) {
+                    cb.checked = !cb.checked;
+                    cb.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                syncQuickBar();
+                return;
+            }
+            const id = btn.getAttribute('data-fr-click');
+            if (id) document.getElementById(id)?.click();
+            syncQuickBar();
+        });
+
         document.getElementById('fr-range-target').addEventListener('change', (e) => {
             rangeTargetId = e.target.value || '';
         });
