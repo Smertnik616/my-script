@@ -1,8 +1,8 @@
 // Лоадер СТАРОЇ (стабільної) версії FalconRoute — встав УСЕ в консоль
 (async () => {
     const urls = [
-        'https://raw.githubusercontent.com/Smertnik616/my-script/main/falcon-route-stable.js?t=' + Date.now(),
-        'https://cdn.jsdelivr.net/gh/Smertnik616/my-script@main/falcon-route-stable.js?t=' + Date.now()
+        'https://raw.githubusercontent.com/Smertnik616/my-script/0920b9f/falcon-route-stable.js?t=' + Date.now(),
+        'https://cdn.jsdelivr.net/gh/Smertnik616/my-script@0920b9f/falcon-route-stable.js?t=' + Date.now()
     ];
     document.getElementById('falcon-route-ui')?.remove();
     document.getElementById('falcon-route-tip')?.remove();
