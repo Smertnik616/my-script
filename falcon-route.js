@@ -685,7 +685,7 @@
         };
     }
 
-    const FR_BUILD = 'ui-clean-29';
+    const FR_BUILD = 'ui-clean-30';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -2683,7 +2683,7 @@
             const btn = document.getElementById('fr-aim-place');
             if (btn) {
                 btn.classList.add('active');
-                btn.textContent = '👆 Клацни ціль…';
+                btn.textContent = 'Клацни ціль…';
             }
             setAimStatus('Клацни на карті, куди ставити ціль', false);
             syncQuickBar();
@@ -3309,7 +3309,7 @@
         function stopPickMode() {
             isPickMode = false;
             pickBtn.classList.remove('active');
-            pickBtn.textContent = '🎯 Точка на карті';
+            pickBtn.textContent = 'Точка на карті';
 
             if (pickListener) {
                 if (mapType === 'google') {
@@ -3327,7 +3327,7 @@
             const btn = document.getElementById('fr-coord-pick');
             if (btn) {
                 btn.classList.remove('active');
-                btn.textContent = '📋 MGRS';
+                btn.textContent = 'MGRS';
             }
             if (coordPickListener) {
                 if (mapType === 'google') {
@@ -3348,7 +3348,7 @@
             console.log('[FALCONROUTE] MGRS copied:', mgrs, '| DD:', dd);
             try {
                 const tip = document.createElement('div');
-                tip.textContent = `📋 ${mgrs}`;
+                tip.textContent = `${mgrs}`;
                 tip.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:99999999;background:#14532d;color:#bbf7d0;padding:10px 14px;border-radius:8px;font:12px/1.3 system-ui;box-shadow:0 4px 16px rgba(0,0,0,.5)';
                 document.body.appendChild(tip);
                 setTimeout(() => tip.remove(), 2200);
@@ -3368,7 +3368,7 @@
             }
             isCorridorMode = false;
             corridorBtn.classList.remove('active');
-            corridorBtn.textContent = '📐 Коридор';
+            corridorBtn.textContent = 'Коридор';
 
             if (commit && draftCorridor.length >= 2) {
                 saveCorridor(draftCorridor.slice());
@@ -3484,7 +3484,7 @@
 
             isPickMode = true;
             pickBtn.classList.add('active');
-            pickBtn.textContent = '👆 Клацніть у точці збиття...';
+            pickBtn.textContent = 'Клацніть у точці збиття…';
             syncQuickBar();
 
             if (mapType === 'google') {
@@ -3526,7 +3526,7 @@
 
             isCoordPickMode = true;
             coordPickBtn.classList.add('active');
-            coordPickBtn.textContent = '👆 Клацни точку → MGRS';
+            coordPickBtn.textContent = 'Клацни точку → MGRS';
             syncQuickBar();
 
             if (mapType === 'google') {
@@ -3837,7 +3837,7 @@
             if (!btn) return;
             if (myFlight?.cruise) {
                 btn.classList.add('active');
-                btn.textContent = '⏸ Стоп';
+                btn.textContent = 'Стоп';
             } else {
                 btn.classList.remove('active');
                 btn.textContent = 'Летіти';
@@ -3850,10 +3850,10 @@
             if (!btn) return;
             if (isPlaneAttached) {
                 btn.classList.add('active');
-                btn.textContent = '🔓 Відкріпити від треку';
+                btn.textContent = 'Відкріпити від треку';
             } else if (isAttachPickMode) {
                 btn.classList.add('active');
-                btn.textContent = '👆 Клацни стрілку треку…';
+                btn.textContent = 'Клацни стрілку треку…';
             } else {
                 btn.classList.remove('active');
                 btn.textContent = 'Прикріпити до треку';
@@ -5280,7 +5280,7 @@
             isPlaceAircraftMode = true;
             const btn = document.getElementById('fr-flight-place');
             btn.classList.add('active');
-            btn.textContent = '👆 Клацни на карті…';
+            btn.textContent = 'Клацни на карті…';
             setFlightStatus('Клацни карту, щоб поставити борт');
             syncQuickBar();
 
@@ -5969,10 +5969,10 @@
             });
             Object.values(analyticsStore.roads || {}).forEach((r) => {
                 const n = Array.isArray(r.path) ? r.path.length : 0;
-                rows.push({ kind: 'roads', id: r.id, label: `🛣 Дорога`, sub: `${n} тчк` });
+                rows.push({ kind: 'roads', id: r.id, label: `Дорога`, sub: `${n} тчк` });
             });
             Object.values(analyticsStore.notes || {}).forEach((n) => {
-                rows.push({ kind: 'notes', id: n.id, label: `📌 ${n.text || 'Мітка'}`, sub: `${n.lat?.toFixed?.(5)}, ${n.lon?.toFixed?.(5)}` });
+                rows.push({ kind: 'notes', id: n.id, label: `${n.text || 'Мітка'}`, sub: `${n.lat?.toFixed?.(5)}, ${n.lon?.toFixed?.(5)}` });
             });
             rows.forEach((row) => {
                 const item = document.createElement('div');
@@ -6226,7 +6226,7 @@
             const btn = document.getElementById('fr-ana-target');
             if (btn) {
                 btn.classList.add('active');
-                btn.textContent = '👆 Клацни ціль…';
+                btn.textContent = 'Клацни ціль…';
             }
             refreshAnaStatus();
             syncQuickBar();
@@ -6278,7 +6278,7 @@
             const btn = document.getElementById('fr-ana-note');
             if (btn) {
                 btn.classList.add('active');
-                btn.textContent = '👆 Клацни мітку…';
+                btn.textContent = 'Клацни мітку…';
             }
             refreshAnaStatus();
             syncQuickBar();
@@ -6348,7 +6348,7 @@
             const btn = document.getElementById('fr-ana-road');
             if (btn) {
                 btn.classList.add('active');
-                btn.textContent = '👆 A → B…';
+                btn.textContent = 'A → B…';
             }
             refreshAnaStatus();
             syncQuickBar();
@@ -6492,7 +6492,7 @@
             const btn = document.getElementById('fr-ana-delete');
             if (btn) {
                 btn.classList.add('active');
-                btn.textContent = '👆 Клацни об’єкт…';
+                btn.textContent = 'Клацни об’єкт…';
             }
             refreshAnaStatus();
             syncQuickBar();
