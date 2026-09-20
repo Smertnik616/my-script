@@ -819,7 +819,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-32';
+    const FR_BUILD = 'ui-clean-33';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -3474,7 +3474,7 @@ function formatCoord(lat, lon, format) {
             const btn = document.getElementById('fr-coord-pick');
             if (btn) {
                 btn.classList.remove('active');
-                btn.textContent = 'MGRS';
+                btn.title = 'Скопіювати координати кліком на карті [Q]';
             }
             if (coordPickListener) {
                 if (mapType === 'google') {
@@ -3675,7 +3675,7 @@ function formatCoord(lat, lon, format) {
             isCoordPickMode = true;
             if (coordPickBtn) {
                 coordPickBtn.classList.add('active');
-                coordPickBtn.textContent = 'Клацни точку…';
+                coordPickBtn.title = 'Клацни точку на карті… Esc — скасувати';
             }
             syncQuickBar();
             if (mapType === 'google') {
