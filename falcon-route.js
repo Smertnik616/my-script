@@ -19,12 +19,16 @@
     function roomFlightsUrl(room) {
         return `${FIREBASE_ROOT}/rooms/${encodeURIComponent(room)}/flights.json`;
     }
+    function roomAnalyticsUrl(room) {
+        return `${FIREBASE_ROOT}/rooms/${encodeURIComponent(room)}/analytics.json`;
+    }
     function licenseRecordUrl(key) {
         return `${FIREBASE_ROOT}/licenses/${encodeURIComponent(key)}.json`;
     }
 
     let DB_URL = roomPointsUrl(DEFAULT_ROOM);
     let FLIGHTS_URL = roomFlightsUrl(DEFAULT_ROOM);
+    let ANALYTICS_URL = roomAnalyticsUrl(DEFAULT_ROOM);
     const FIREBASE_ENABLED = !FIREBASE_ROOT.includes('ВАШ_ПРОЄКТ');
     const STORAGE_KEY = 'cesium_falcon_route_points_v1';
     const SETTINGS_KEY = 'cesium_falcon_route_settings_v1';
@@ -62,6 +66,7 @@
         const room = String(meta?.room || DEFAULT_ROOM).trim() || DEFAULT_ROOM;
         DB_URL = roomPointsUrl(room);
         FLIGHTS_URL = roomFlightsUrl(room);
+        ANALYTICS_URL = roomAnalyticsUrl(room);
         activeLicenseMeta = { ...(meta || {}), room };
         try { localStorage.setItem(LICENSE_META_STORAGE, JSON.stringify(activeLicenseMeta)); } catch (_) { /* ignore */ }
     }
@@ -680,7 +685,7 @@
         };
     }
 
-    const FR_BUILD = 'aim-label-h-23';
+    const FR_BUILD = 'analytics-roads-24';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1118,6 +1123,19 @@
         let rulerListener = null;
         let draftCorridor = [];
 
+        // Аналітика (спільні цілі / дороги / мітки)
+        let analyticsStore = { targets: {}, roads: {}, notes: {} };
+        let analyticsOverlays = { targets: {}, roads: {}, notes: {}, draft: [] };
+        let draftRoadPoints = [];
+        let isAnaTargetMode = false;
+        let isAnaNoteMode = false;
+        let isAnaRoadMode = false;
+        let anaTargetListener = null;
+        let anaNoteListener = null;
+        let anaRoadListener = null;
+        let applyAnalyticsRemote = false;
+        let analyticsEs = null;
+
         installHostTrackSpy();
         window.__FR_hostTracks = () => {
             try {
@@ -1414,6 +1432,33 @@
                         -1px 1px 0 #7c2d12, 1px 1px 0 #7c2d12,
                         0 1px 3px rgba(0,0,0,.65);
                 }
+                #falcon-route-ui .fr-qbar-main {
+                    display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px;
+                }
+                #falcon-route-ui .fr-qbar-sec {
+                    display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px;
+                }
+                #falcon-route-ui .fr-qbtn.fr-q-labeled {
+                    flex-direction: column; gap: 1px; min-height: 44px !important; height: auto !important;
+                    padding: 4px 2px !important; font-size: 11px !important;
+                }
+                #falcon-route-ui .fr-qk {
+                    display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: .06em;
+                    color: #7dd3fc; background: #0b1220; border: 1px solid #1e3a5f;
+                    border-radius: 4px; padding: 0 4px; line-height: 14px;
+                }
+                #falcon-route-ui .fr-qt { font-size: 10px; font-weight: 650; color: #e2e8f0; }
+                #falcon-route-ui .fr-hotkeys-hint { color: #64748b; font-weight: 500; text-transform: none; letter-spacing: 0; }
+                .fr-ana-label { position: absolute; transform: translate(-50%, calc(-100% - 18px)); pointer-events: none; white-space: nowrap; z-index: 3; text-align: center; }
+                .fr-ana-label .fr-ana-chip {
+                    display: inline-block; max-width: 180px; overflow: hidden; text-overflow: ellipsis;
+                    background: rgba(15,23,42,.92); color: #fef08a; font: 700 11px/1.25 system-ui, sans-serif;
+                    padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(250,204,21,.75);
+                    box-shadow: 0 2px 10px rgba(0,0,0,.45);
+                }
+                .fr-ana-label.fr-ana-note .fr-ana-chip {
+                    color: #e0f2fe; border-color: rgba(56,189,248,.7);
+                }
             </style>
             <div class="fr-head" id="fr-drag">
                 <div class="fr-head-title">
@@ -1426,19 +1471,21 @@
             </div>
             <div class="fr-body" id="fr-main">
                 <div class="fr-quick">
-                    <div class="fr-qlabel">Швидкі команди</div>
-                    <div class="fr-qbar" id="fr-qbar">
-                        <button type="button" class="fr-qbtn" id="fr-q-pick" title="Додати точку кліком на карті" data-fr-click="fr-pick" data-fr-acc="points">🎯</button>
-                        <button type="button" class="fr-qbtn" id="fr-q-mgrs" title="Скопіювати MGRS з карти" data-fr-click="fr-coord-pick" data-fr-acc="coords">📋</button>
-                        <button type="button" class="fr-qbtn" id="fr-q-ruler" title="Малювати лінійку" data-fr-click="fr-ruler" data-fr-acc="ruler">📏</button>
-                        <button type="button" class="fr-qbtn" id="fr-q-aim" title="Поставити ціль (лінія від борта)" data-fr-click="fr-aim-place" data-fr-acc="ruler">◎</button>
-                        <button type="button" class="fr-qbtn" id="fr-q-corridor" title="Малювати коридор" data-fr-click="fr-corridor" data-fr-acc="corridor">🛤</button>
-                        <button type="button" class="fr-qbtn" id="fr-q-copy" title="Скопіювати видимі координати" data-fr-click="fr-copy" data-fr-acc="coords">📤</button>
+                    <div class="fr-qlabel">Гарячі команди <span class="fr-hotkeys-hint">R · T · D · C · P</span></div>
+                    <div class="fr-qbar fr-qbar-main" id="fr-qbar">
+                        <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-ruler" title="Лінійка [R]" data-fr-click="fr-ruler" data-fr-acc="ruler"><span class="fr-qk">R</span><span class="fr-qt">Лінійка</span></button>
+                        <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-atarget" title="Спільна ціль польоту [T]" data-fr-click="fr-ana-target" data-fr-acc="analytics"><span class="fr-qk">T</span><span class="fr-qt">Ціль</span></button>
+                        <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-road" title="Підсвітка дороги [D]" data-fr-click="fr-ana-road" data-fr-acc="analytics"><span class="fr-qk">D</span><span class="fr-qt">Дорога</span></button>
+                        <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-note" title="Мітка з текстом [C]" data-fr-click="fr-ana-note" data-fr-acc="analytics"><span class="fr-qk">C</span><span class="fr-qt">Мітка</span></button>
+                        <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-pick" title="Точка збиття [P]" data-fr-click="fr-pick" data-fr-acc="points"><span class="fr-qk">P</span><span class="fr-qt">Точка</span></button>
+                    </div>
+                    <div class="fr-qbar fr-qbar-sec">
+                        <button type="button" class="fr-qbtn" id="fr-q-aim" title="Особиста ціль (лінія від борта)" data-fr-click="fr-aim-place" data-fr-acc="ruler">◎</button>
+                        <button type="button" class="fr-qbtn" id="fr-q-mgrs" title="Скопіювати MGRS" data-fr-click="fr-coord-pick" data-fr-acc="coords">📋</button>
                         <button type="button" class="fr-qbtn" id="fr-q-place" title="Поставити борт" data-fr-click="fr-flight-place" data-fr-acc="flight">📍</button>
                         <button type="button" class="fr-qbtn fr-q-go" id="fr-q-fly" title="Летіти / стоп" data-fr-click="fr-flight-goto" data-fr-acc="flight">✈</button>
-                        <button type="button" class="fr-qbtn" id="fr-q-attach" title="Прикріпити до треку карти" data-fr-click="fr-flight-attach" data-fr-acc="flight">🔗</button>
+                        <button type="button" class="fr-qbtn" id="fr-q-attach" title="Прикріпити до треку" data-fr-click="fr-flight-attach" data-fr-acc="flight">🔗</button>
                         <button type="button" class="fr-qbtn" id="fr-q-points" title="Показати / сховати точки" data-fr-cmd="toggle-points" data-fr-acc="filters">👁</button>
-                        <button type="button" class="fr-qbtn fr-q-danger" id="fr-q-remove" title="Прибрати борт" data-fr-click="fr-flight-stop" data-fr-acc="flight">⏹</button>
                     </div>
                     <div class="fr-quick-row">
                         <button class="fr-btn fr-btn-pick" id="fr-pick">🎯 Точка на карті</button>
@@ -2361,6 +2408,7 @@
             if (isCoordPickMode) stopCoordPickMode();
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
+            stopAnalyticsModes();
             stopAircraftModes();
             if (isAttachPickMode) {
                 clearAttachPickListener();
@@ -3169,6 +3217,7 @@
             if (isRulerMode) stopRulerMode();
             if (isCoordPickMode) stopCoordPickMode();
             if (isAimPlaceMode) stopAimPlaceMode();
+            stopAnalyticsModes();
             stopAircraftModes();
             if (isPickMode) {
                 stopPickMode();
@@ -3210,6 +3259,7 @@
             if (isRulerMode) stopRulerMode();
             if (isPickMode) stopPickMode();
             if (isAimPlaceMode) stopAimPlaceMode();
+            stopAnalyticsModes();
             stopAircraftModes();
             if (isCoordPickMode) {
                 stopCoordPickMode();
@@ -3244,6 +3294,7 @@
             if (isCoordPickMode) stopCoordPickMode();
             if (isRulerMode) stopRulerMode();
             if (isAimPlaceMode) stopAimPlaceMode();
+            stopAnalyticsModes();
             stopAircraftModes();
 
             if (isCorridorMode) {
@@ -3301,6 +3352,7 @@
             if (isCoordPickMode) stopCoordPickMode();
             if (isCorridorMode) stopCorridorMode(false);
             if (isAimPlaceMode) stopAimPlaceMode();
+            stopAnalyticsModes();
             stopAircraftModes();
 
             if (isRulerMode) {
@@ -3590,10 +3642,16 @@
                     ? 'Відкріпити від треку'
                     : (isAttachPickMode ? 'Скасувати вибір треку' : 'Прикріпити до треку карти');
             }
+            const qTarget = document.getElementById('fr-q-atarget');
+            if (qTarget) qTarget.classList.toggle('active', isAnaTargetMode);
+            const qRoad = document.getElementById('fr-q-road');
+            if (qRoad) qRoad.classList.toggle('active', isAnaRoadMode);
+            const qNote = document.getElementById('fr-q-note');
+            if (qNote) qNote.classList.toggle('active', isAnaNoteMode);
         }
 
         function wireQuickBar() {
-            const bar = document.getElementById('fr-qbar');
+            const bar = document.querySelector('#falcon-route-ui .fr-quick');
             if (!bar || bar.__frWired) return;
             bar.__frWired = true;
             bar.addEventListener('click', (e) => {
@@ -4924,6 +4982,7 @@
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
             if (isAimPlaceMode) stopAimPlaceMode();
+            stopAnalyticsModes();
             if (isPlaneAttached) detachFromHostTrack(true);
             if (isAttachPickMode) {
                 clearAttachPickListener();
@@ -5085,6 +5144,823 @@
             reader.readAsText(file);
         };
 
+
+        function anaNewId(prefix) {
+            return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+        }
+
+        function anaTextInput() {
+            return (document.getElementById('fr-ana-text')?.value || '').trim();
+        }
+
+        function anaColor() {
+            const v = (document.getElementById('fr-ana-color')?.value || '#fbbf24').trim();
+            return /^#[0-9a-fA-F]{6}$/.test(v) ? v : '#fbbf24';
+        }
+
+        function anaRoadOpacity() {
+            const v = parseFloat(document.getElementById('fr-ana-road-op')?.value);
+            if (!Number.isFinite(v)) return 0.4;
+            return Math.min(0.85, Math.max(0.15, v));
+        }
+
+        function analyticsChildUrl(kind, id) {
+            return ANALYTICS_URL.replace(/\.json$/, `/${kind}/${encodeURIComponent(id)}.json`);
+        }
+
+        function setAnaStatus(msg, muted) {
+            const el = document.getElementById('fr-ana-status');
+            if (!el) return;
+            el.textContent = msg || '';
+            el.className = muted ? 'fr-status muted' : 'fr-status';
+        }
+
+        function countAnalytics() {
+            const t = Object.keys(analyticsStore.targets || {}).length;
+            const r = Object.keys(analyticsStore.roads || {}).length;
+            const n = Object.keys(analyticsStore.notes || {}).length;
+            return { t, r, n, total: t + r + n };
+        }
+
+        function refreshAnaStatus() {
+            const c = countAnalytics();
+            if (isAnaRoadMode) {
+                setAnaStatus(`Малювання дороги: ${draftRoadPoints.length} точок · Enter / «Завершити»`, false);
+                return;
+            }
+            if (isAnaTargetMode) {
+                setAnaStatus('Клацни карту — спільна ціль польоту', false);
+                return;
+            }
+            if (isAnaNoteMode) {
+                setAnaStatus('Клацни карту — мітка з текстом', false);
+                return;
+            }
+            if (!c.total) {
+                setAnaStatus('Немає спільних позначок', true);
+                return;
+            }
+            setAnaStatus(`Цілей: ${c.t} · доріг: ${c.r} · міток: ${c.n}`, false);
+        }
+
+        function analyticsTargetIcon(color) {
+            const c = color || '#fbbf24';
+            const svg =
+                `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">` +
+                `<circle cx="20" cy="20" r="16" fill="${c}" fill-opacity="0.28"/>` +
+                `<circle cx="20" cy="20" r="10" fill="${c}" fill-opacity="0.55" stroke="#fff" stroke-width="1.5"/>` +
+                `<circle cx="20" cy="20" r="4" fill="#fff"/></svg>`;
+            return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+        }
+
+        function analyticsNoteIcon(color) {
+            const c = color || '#38bdf8';
+            const svg =
+                `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">` +
+                `<circle cx="14" cy="14" r="9" fill="${c}" stroke="#fff" stroke-width="2"/></svg>`;
+            return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+        }
+
+        function clearAnaOverlayBucket(bucket) {
+            const mapObj = analyticsOverlays[bucket] || {};
+            Object.keys(mapObj).forEach((id) => {
+                const items = Array.isArray(mapObj[id]) ? mapObj[id] : [mapObj[id]];
+                items.forEach((obj) => {
+                    try {
+                        if (!obj) return;
+                        if (mapType === 'google') {
+                            if (typeof obj.setMap === 'function') obj.setMap(null);
+                            else if (obj.map) obj.setMap?.(null);
+                        } else {
+                            map.entities.remove(obj);
+                        }
+                    } catch (_) { /* ignore */ }
+                });
+            });
+            analyticsOverlays[bucket] = {};
+        }
+
+        function clearAnaDraftOverlays() {
+            (analyticsOverlays.draft || []).forEach((obj) => {
+                try {
+                    if (mapType === 'google') obj.setMap?.(null);
+                    else map.entities.remove(obj);
+                } catch (_) { /* ignore */ }
+            });
+            analyticsOverlays.draft = [];
+        }
+
+        function clearAllAnalyticsOverlays() {
+            clearAnaOverlayBucket('targets');
+            clearAnaOverlayBucket('roads');
+            clearAnaOverlayBucket('notes');
+            clearAnaDraftOverlays();
+        }
+
+        function createAnaLabel(lat, lon, text, kind) {
+            if (!text) return null;
+            if (mapType === 'google') {
+                class FrAnaLabel extends google.maps.OverlayView {
+                    constructor() {
+                        super();
+                        this.position = new google.maps.LatLng(lat, lon);
+                        this.div = null;
+                    }
+                    onAdd() {
+                        this.div = document.createElement('div');
+                        this.div.className = 'fr-ana-label' + (kind === 'note' ? ' fr-ana-note' : '');
+                        const chip = document.createElement('div');
+                        chip.className = 'fr-ana-chip';
+                        chip.textContent = text;
+                        this.div.appendChild(chip);
+                        this.getPanes().floatPane.appendChild(this.div);
+                    }
+                    draw() {
+                        const proj = this.getProjection();
+                        if (!proj || !this.div) return;
+                        const p = proj.fromLatLngToDivPixel(this.position);
+                        if (!p) return;
+                        this.div.style.left = p.x + 'px';
+                        this.div.style.top = p.y + 'px';
+                    }
+                    onRemove() {
+                        if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
+                        this.div = null;
+                    }
+                }
+                const ov = new FrAnaLabel();
+                ov.setMap(map);
+                return ov;
+            }
+            return map.entities.add({
+                position: Cesium.Cartesian3.fromDegrees(lon, lat),
+                label: {
+                    text,
+                    font: 'bold 12px sans-serif',
+                    fillColor: toCesiumColor(kind === 'note' ? '#e0f2fe' : '#fef08a'),
+                    outlineColor: toCesiumColor('#0f172a'),
+                    outlineWidth: 3,
+                    style: Cesium?.LabelStyle?.FILL_AND_OUTLINE,
+                    showBackground: true,
+                    backgroundColor: toCesiumColor({ red: 0.06, green: 0.09, blue: 0.16, alpha: 0.88 }),
+                    pixelOffset: Cesium?.Cartesian2 ? new Cesium.Cartesian2(0, -22) : undefined,
+                    disableDepthTestDistance: Number.POSITIVE_INFINITY
+                }
+            });
+        }
+
+        function renderAnalytics() {
+            clearAllAnalyticsOverlays();
+            const targets = analyticsStore.targets || {};
+            Object.keys(targets).forEach((id) => {
+                const t = targets[id];
+                if (!t || !Number.isFinite(t.lat) || !Number.isFinite(t.lon)) return;
+                const color = t.color || '#fbbf24';
+                const parts = [];
+                if (mapType === 'google') {
+                    const m = new google.maps.Marker({
+                        map,
+                        position: { lat: t.lat, lng: t.lon },
+                        icon: {
+                            url: analyticsTargetIcon(color),
+                            scaledSize: new google.maps.Size(40, 40),
+                            anchor: new google.maps.Point(20, 20)
+                        },
+                        zIndex: 900,
+                        title: t.text || 'Ціль'
+                    });
+                    markOwnOverlay(m);
+                    parts.push(m);
+                    const lab = createAnaLabel(t.lat, t.lon, t.text || '', 'target');
+                    if (lab) parts.push(lab);
+                } else {
+                    parts.push(map.entities.add({
+                        position: Cesium.Cartesian3.fromDegrees(t.lon, t.lat),
+                        billboard: {
+                            image: analyticsTargetIcon(color),
+                            width: 40,
+                            height: 40,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY
+                        },
+                        point: {
+                            pixelSize: 10,
+                            color: toCesiumColor(color, 0.95),
+                            outlineColor: toCesiumColor('#ffffff'),
+                            outlineWidth: 2,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY
+                        }
+                    }));
+                    const lab = createAnaLabel(t.lat, t.lon, t.text || '', 'target');
+                    if (lab) parts.push(lab);
+                }
+                analyticsOverlays.targets[id] = parts;
+            });
+
+            const roads = analyticsStore.roads || {};
+            Object.keys(roads).forEach((id) => {
+                const road = roads[id];
+                const path = Array.isArray(road?.path) ? road.path : [];
+                if (path.length < 2) return;
+                const color = road.color || '#fbbf24';
+                const opacity = Number.isFinite(road.opacity) ? road.opacity : 0.4;
+                const parts = [];
+                if (mapType === 'google') {
+                    const poly = new google.maps.Polyline({
+                        map,
+                        path: path.map((p) => ({ lat: p.lat, lng: p.lon })),
+                        strokeColor: color,
+                        strokeOpacity: opacity,
+                        strokeWeight: 12,
+                        zIndex: 50,
+                        clickable: false
+                    });
+                    markOwnOverlay(poly);
+                    parts.push(poly);
+                } else {
+                    parts.push(map.entities.add({
+                        polyline: {
+                            positions: path.map((p) => Cesium.Cartesian3.fromDegrees(p.lon, p.lat)),
+                            width: 12,
+                            material: toCesiumColor(color, opacity),
+                            clampToGround: true
+                        }
+                    }));
+                }
+                analyticsOverlays.roads[id] = parts;
+            });
+
+            const notes = analyticsStore.notes || {};
+            Object.keys(notes).forEach((id) => {
+                const n = notes[id];
+                if (!n || !Number.isFinite(n.lat) || !Number.isFinite(n.lon)) return;
+                const color = n.color || '#38bdf8';
+                const parts = [];
+                if (mapType === 'google') {
+                    const m = new google.maps.Marker({
+                        map,
+                        position: { lat: n.lat, lng: n.lon },
+                        icon: {
+                            url: analyticsNoteIcon(color),
+                            scaledSize: new google.maps.Size(28, 28),
+                            anchor: new google.maps.Point(14, 14)
+                        },
+                        zIndex: 850,
+                        title: n.text || 'Мітка'
+                    });
+                    markOwnOverlay(m);
+                    parts.push(m);
+                    const lab = createAnaLabel(n.lat, n.lon, n.text || '', 'note');
+                    if (lab) parts.push(lab);
+                } else {
+                    parts.push(map.entities.add({
+                        position: Cesium.Cartesian3.fromDegrees(n.lon, n.lat),
+                        billboard: {
+                            image: analyticsNoteIcon(color),
+                            width: 28,
+                            height: 28,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY
+                        }
+                    }));
+                    const lab = createAnaLabel(n.lat, n.lon, n.text || '', 'note');
+                    if (lab) parts.push(lab);
+                }
+                analyticsOverlays.notes[id] = parts;
+            });
+
+            renderAnaDraft();
+            renderAnaList();
+            refreshAnaStatus();
+            syncQuickBar();
+        }
+
+        function renderAnaDraft() {
+            clearAnaDraftOverlays();
+            if (!isAnaRoadMode || draftRoadPoints.length < 1) return;
+            const color = anaColor();
+            const opacity = anaRoadOpacity();
+            if (mapType === 'google') {
+                if (draftRoadPoints.length >= 2) {
+                    const poly = new google.maps.Polyline({
+                        map,
+                        path: draftRoadPoints.map((p) => ({ lat: p.lat, lng: p.lon })),
+                        strokeColor: color,
+                        strokeOpacity: Math.min(0.7, opacity + 0.15),
+                        strokeWeight: 12,
+                        zIndex: 60,
+                        clickable: false
+                    });
+                    markOwnOverlay(poly);
+                    analyticsOverlays.draft.push(poly);
+                }
+                draftRoadPoints.forEach((p, idx) => {
+                    const m = new google.maps.Marker({
+                        map,
+                        position: { lat: p.lat, lng: p.lon },
+                        label: { text: String(idx + 1), color: '#0f172a', fontWeight: '700', fontSize: '10px' },
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 7,
+                            fillColor: color,
+                            fillOpacity: 0.9,
+                            strokeColor: '#fff',
+                            strokeWeight: 1.5
+                        },
+                        zIndex: 70
+                    });
+                    markOwnOverlay(m);
+                    analyticsOverlays.draft.push(m);
+                });
+            } else {
+                if (draftRoadPoints.length >= 2) {
+                    analyticsOverlays.draft.push(map.entities.add({
+                        polyline: {
+                            positions: draftRoadPoints.map((p) => Cesium.Cartesian3.fromDegrees(p.lon, p.lat)),
+                            width: 12,
+                            material: toCesiumColor(color, Math.min(0.7, opacity + 0.15)),
+                            clampToGround: true
+                        }
+                    }));
+                }
+                draftRoadPoints.forEach((p) => {
+                    analyticsOverlays.draft.push(map.entities.add({
+                        position: Cesium.Cartesian3.fromDegrees(p.lon, p.lat),
+                        point: {
+                            pixelSize: 10,
+                            color: toCesiumColor(color, 0.95),
+                            outlineColor: toCesiumColor('#ffffff'),
+                            outlineWidth: 2,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY
+                        }
+                    }));
+                });
+            }
+        }
+
+        function renderAnaList() {
+            const list = document.getElementById('fr-ana-list');
+            if (!list) return;
+            list.innerHTML = '';
+            const rows = [];
+            Object.values(analyticsStore.targets || {}).forEach((t) => {
+                rows.push({ kind: 'targets', id: t.id, label: `◎ ${t.text || 'Ціль'}`, sub: `${t.lat?.toFixed?.(5)}, ${t.lon?.toFixed?.(5)}` });
+            });
+            Object.values(analyticsStore.roads || {}).forEach((r) => {
+                const n = Array.isArray(r.path) ? r.path.length : 0;
+                rows.push({ kind: 'roads', id: r.id, label: `🛣 Дорога`, sub: `${n} тчк` });
+            });
+            Object.values(analyticsStore.notes || {}).forEach((n) => {
+                rows.push({ kind: 'notes', id: n.id, label: `📌 ${n.text || 'Мітка'}`, sub: `${n.lat?.toFixed?.(5)}, ${n.lon?.toFixed?.(5)}` });
+            });
+            rows.forEach((row) => {
+                const item = document.createElement('div');
+                item.className = 'fr-item';
+                const main = document.createElement('div');
+                main.className = 'fr-item-main';
+                main.innerHTML = `<div>${row.label}</div><div style="opacity:.7">${row.sub || ''}</div>`;
+                const actions = document.createElement('div');
+                actions.className = 'fr-item-actions';
+                const del = document.createElement('span');
+                del.textContent = '✕';
+                del.style.cssText = 'color:#f87171;cursor:pointer;font-weight:bold';
+                del.onclick = () => deleteAnalyticsItem(row.kind, row.id);
+                actions.appendChild(del);
+                item.appendChild(main);
+                item.appendChild(actions);
+                list.appendChild(item);
+            });
+        }
+
+        async function pushAnalyticsItem(kind, item) {
+            if (!FIREBASE_ENABLED || applyAnalyticsRemote || !item?.id) return;
+            try {
+                await fetch(analyticsChildUrl(kind, item.id), {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(item)
+                });
+            } catch (err) {
+                console.warn('[FALCONROUTE] analytics push failed', err);
+            }
+        }
+
+        async function deleteAnalyticsItem(kind, id, silent) {
+            if (!id) return;
+            if (analyticsStore[kind]) delete analyticsStore[kind][id];
+            renderAnalytics();
+            if (!FIREBASE_ENABLED || applyAnalyticsRemote) return;
+            try {
+                await fetch(analyticsChildUrl(kind, id), { method: 'DELETE' });
+            } catch (err) {
+                console.warn('[FALCONROUTE] analytics delete failed', err);
+            }
+            if (!silent) refreshAnaStatus();
+        }
+
+        async function clearAllAnalytics() {
+            const kinds = ['targets', 'roads', 'notes'];
+            const ids = [];
+            kinds.forEach((k) => {
+                Object.keys(analyticsStore[k] || {}).forEach((id) => ids.push([k, id]));
+            });
+            analyticsStore = { targets: {}, roads: {}, notes: {} };
+            draftRoadPoints = [];
+            renderAnalytics();
+            if (!FIREBASE_ENABLED || applyAnalyticsRemote) return;
+            await Promise.all(ids.map(([k, id]) =>
+                fetch(analyticsChildUrl(k, id), { method: 'DELETE' }).catch(() => null)
+            ));
+        }
+
+        function normalizeAnalyticsPayload(data) {
+            const out = { targets: {}, roads: {}, notes: {} };
+            if (!data || typeof data !== 'object') return out;
+            ['targets', 'roads', 'notes'].forEach((kind) => {
+                const src = data[kind];
+                if (!src || typeof src !== 'object') return;
+                Object.keys(src).forEach((id) => {
+                    const item = src[id];
+                    if (!item || typeof item !== 'object') return;
+                    out[kind][id] = { ...item, id: item.id || id };
+                });
+            });
+            return out;
+        }
+
+        function applyAnalyticsData(data) {
+            applyAnalyticsRemote = true;
+            analyticsStore = normalizeAnalyticsPayload(data);
+            renderAnalytics();
+            applyAnalyticsRemote = false;
+        }
+
+        function listenToAnalytics() {
+            if (!FIREBASE_ENABLED || ANALYTICS_URL.includes('ВАШ_ПРОЄКТ')) return;
+            try {
+                if (analyticsEs) {
+                    try { analyticsEs.close(); } catch (_) { /* ignore */ }
+                    analyticsEs = null;
+                }
+                const es = new EventSource(ANALYTICS_URL);
+                analyticsEs = es;
+                es.addEventListener('put', (e) => {
+                    try {
+                        const res = JSON.parse(e.data);
+                        if (res.path === '/') {
+                            applyAnalyticsData(res.data);
+                            return;
+                        }
+                        const parts = String(res.path || '').replace(/^\//, '').split('/');
+                        const kind = parts[0];
+                        const id = parts[1];
+                        if (!['targets', 'roads', 'notes'].includes(kind)) return;
+                        applyAnalyticsRemote = true;
+                        if (!analyticsStore[kind]) analyticsStore[kind] = {};
+                        if (res.data === null) delete analyticsStore[kind][id];
+                        else if (id) analyticsStore[kind][id] = { ...res.data, id: res.data?.id || id };
+                        else if (res.data && typeof res.data === 'object') {
+                            analyticsStore[kind] = {};
+                            Object.keys(res.data).forEach((k) => {
+                                analyticsStore[kind][k] = { ...res.data[k], id: res.data[k]?.id || k };
+                            });
+                        }
+                        renderAnalytics();
+                        applyAnalyticsRemote = false;
+                    } catch (err) {
+                        console.warn('[FALCONROUTE] analytics sync parse error', err);
+                    }
+                });
+                es.addEventListener('patch', (e) => {
+                    try {
+                        const res = JSON.parse(e.data);
+                        if (res.path === '/' && res.data && typeof res.data === 'object') {
+                            applyAnalyticsRemote = true;
+                            const next = normalizeAnalyticsPayload({
+                                targets: { ...(analyticsStore.targets || {}), ...(res.data.targets || {}) },
+                                roads: { ...(analyticsStore.roads || {}), ...(res.data.roads || {}) },
+                                notes: { ...(analyticsStore.notes || {}), ...(res.data.notes || {}) }
+                            });
+                            analyticsStore = next;
+                            renderAnalytics();
+                            applyAnalyticsRemote = false;
+                        }
+                    } catch (_) { /* ignore */ }
+                });
+            } catch (err) {
+                console.warn('[FALCONROUTE] analytics EventSource failed', err);
+            }
+        }
+
+        function clearAnaListener(kind) {
+            const handlers = {
+                target: () => {
+                    if (anaTargetListener) {
+                        if (mapType === 'google') google.maps.event.removeListener(anaTargetListener);
+                        else if (map.canvas) map.canvas.removeEventListener('click', anaTargetListener);
+                        anaTargetListener = null;
+                    }
+                    isAnaTargetMode = false;
+                    const btn = document.getElementById('fr-ana-target');
+                    if (btn) {
+                        btn.classList.remove('active');
+                        btn.textContent = '◎ Ціль польоту';
+                    }
+                },
+                note: () => {
+                    if (anaNoteListener) {
+                        if (mapType === 'google') google.maps.event.removeListener(anaNoteListener);
+                        else if (map.canvas) map.canvas.removeEventListener('click', anaNoteListener);
+                        anaNoteListener = null;
+                    }
+                    isAnaNoteMode = false;
+                    const btn = document.getElementById('fr-ana-note');
+                    if (btn) {
+                        btn.classList.remove('active');
+                        btn.textContent = '📌 Мітка + текст';
+                    }
+                },
+                road: () => {
+                    if (anaRoadListener) {
+                        if (mapType === 'google') google.maps.event.removeListener(anaRoadListener);
+                        else if (map.canvas) map.canvas.removeEventListener('click', anaRoadListener);
+                        anaRoadListener = null;
+                    }
+                    isAnaRoadMode = false;
+                    const btn = document.getElementById('fr-ana-road');
+                    if (btn) {
+                        btn.classList.remove('active');
+                        btn.textContent = '🛣 Малювати дорогу';
+                    }
+                }
+            };
+            if (kind && handlers[kind]) handlers[kind]();
+            else Object.values(handlers).forEach((fn) => fn());
+        }
+
+        function stopAnalyticsModes(opts) {
+            const keepDraft = !!(opts && opts.keepDraft);
+            clearAnaListener();
+            if (!keepDraft) {
+                draftRoadPoints = [];
+                clearAnaDraftOverlays();
+            }
+            refreshAnaStatus();
+            syncQuickBar();
+        }
+
+        function cancelMapModesForAnalytics() {
+            if (isPickMode) stopPickMode();
+            if (isCoordPickMode) stopCoordPickMode();
+            if (isCorridorMode) stopCorridorMode(false);
+            if (isRulerMode) stopRulerMode();
+            if (isAimPlaceMode) stopAimPlaceMode();
+            stopAircraftModes();
+            if (isAttachPickMode) {
+                clearAttachPickListener();
+                updateAttachBtn();
+            }
+        }
+
+        function beginAnaTargetPlace() {
+            cancelMapModesForAnalytics();
+            clearAnaListener('note');
+            clearAnaListener('road');
+            draftRoadPoints = [];
+            clearAnaDraftOverlays();
+            if (isAnaTargetMode) {
+                clearAnaListener('target');
+                refreshAnaStatus();
+                syncQuickBar();
+                return;
+            }
+            isAnaTargetMode = true;
+            const btn = document.getElementById('fr-ana-target');
+            if (btn) {
+                btn.classList.add('active');
+                btn.textContent = '👆 Клацни ціль…';
+            }
+            refreshAnaStatus();
+            syncQuickBar();
+            const onPick = (lat, lon) => {
+                const item = {
+                    id: anaNewId('tgt'),
+                    lat,
+                    lon,
+                    text: anaTextInput(),
+                    color: anaColor(),
+                    createdBy: CLIENT_ID,
+                    createdAt: Date.now()
+                };
+                analyticsStore.targets[item.id] = item;
+                clearAnaListener('target');
+                renderAnalytics();
+                pushAnalyticsItem('targets', item);
+            };
+            if (mapType === 'google') {
+                anaTargetListener = map.addListener('click', (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                });
+            } else if (map.canvas) {
+                anaTargetListener = (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                };
+                map.canvas.addEventListener('click', anaTargetListener);
+            }
+        }
+
+        function beginAnaNotePlace() {
+            cancelMapModesForAnalytics();
+            clearAnaListener('target');
+            clearAnaListener('road');
+            draftRoadPoints = [];
+            clearAnaDraftOverlays();
+            if (isAnaNoteMode) {
+                clearAnaListener('note');
+                refreshAnaStatus();
+                syncQuickBar();
+                return;
+            }
+            isAnaNoteMode = true;
+            const btn = document.getElementById('fr-ana-note');
+            if (btn) {
+                btn.classList.add('active');
+                btn.textContent = '👆 Клацни мітку…';
+            }
+            refreshAnaStatus();
+            syncQuickBar();
+            const onPick = (lat, lon) => {
+                const item = {
+                    id: anaNewId('note'),
+                    lat,
+                    lon,
+                    text: anaTextInput() || `${lat.toFixed(5)}, ${lon.toFixed(5)}`,
+                    color: anaColor(),
+                    createdBy: CLIENT_ID,
+                    createdAt: Date.now()
+                };
+                analyticsStore.notes[item.id] = item;
+                clearAnaListener('note');
+                renderAnalytics();
+                pushAnalyticsItem('notes', item);
+            };
+            if (mapType === 'google') {
+                anaNoteListener = map.addListener('click', (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                });
+            } else if (map.canvas) {
+                anaNoteListener = (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                };
+                map.canvas.addEventListener('click', anaNoteListener);
+            }
+        }
+
+        function beginAnaRoadDraw() {
+            cancelMapModesForAnalytics();
+            clearAnaListener('target');
+            clearAnaListener('note');
+            if (isAnaRoadMode) {
+                clearAnaListener('road');
+                draftRoadPoints = [];
+                clearAnaDraftOverlays();
+                refreshAnaStatus();
+                syncQuickBar();
+                return;
+            }
+            isAnaRoadMode = true;
+            draftRoadPoints = [];
+            const btn = document.getElementById('fr-ana-road');
+            if (btn) {
+                btn.classList.add('active');
+                btn.textContent = '👆 Точки дороги…';
+            }
+            refreshAnaStatus();
+            syncQuickBar();
+            const onPick = (lat, lon) => {
+                draftRoadPoints.push({ lat, lon });
+                renderAnaDraft();
+                refreshAnaStatus();
+            };
+            if (mapType === 'google') {
+                anaRoadListener = map.addListener('click', (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                });
+            } else if (map.canvas) {
+                anaRoadListener = (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                };
+                map.canvas.addEventListener('click', anaRoadListener);
+            }
+        }
+
+        function finishAnaRoad() {
+            if (!isAnaRoadMode) return;
+            if (draftRoadPoints.length < 2) {
+                setAnaStatus('Потрібно ≥ 2 точки для дороги', false);
+                return;
+            }
+            const item = {
+                id: anaNewId('road'),
+                path: draftRoadPoints.slice(),
+                color: anaColor(),
+                opacity: anaRoadOpacity(),
+                createdBy: CLIENT_ID,
+                createdAt: Date.now()
+            };
+            analyticsStore.roads[item.id] = item;
+            clearAnaListener('road');
+            draftRoadPoints = [];
+            clearAnaDraftOverlays();
+            renderAnalytics();
+            pushAnalyticsItem('roads', item);
+        }
+
+        function wireAnalyticsUi() {
+            document.getElementById('fr-ana-target')?.addEventListener('click', () => beginAnaTargetPlace());
+            document.getElementById('fr-ana-note')?.addEventListener('click', () => beginAnaNotePlace());
+            document.getElementById('fr-ana-road')?.addEventListener('click', () => beginAnaRoadDraw());
+            document.getElementById('fr-ana-road-finish')?.addEventListener('click', () => finishAnaRoad());
+            document.getElementById('fr-ana-clear')?.addEventListener('click', () => {
+                if (!countAnalytics().total && !draftRoadPoints.length) return;
+                if (!confirm('Скинути всю спільну аналітику (цілі, дороги, мітки)?')) return;
+                stopAnalyticsModes();
+                clearAllAnalytics();
+            });
+            document.getElementById('fr-ana-road-op')?.addEventListener('change', () => {
+                if (isAnaRoadMode) renderAnaDraft();
+            });
+            document.getElementById('fr-ana-color')?.addEventListener('input', () => {
+                if (isAnaRoadMode) renderAnaDraft();
+            });
+        }
+
+        function wireHotkeys() {
+            if (window.__frHotkeysWired) return;
+            window.__frHotkeysWired = true;
+            document.addEventListener('keydown', (e) => {
+                if (accessRevoked) return;
+                const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+                if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) {
+                    if (e.key === 'Enter' && isAnaRoadMode && tag === 'input' && e.target.id === 'fr-ana-text') {
+                        /* allow */
+                    } else if (e.key === 'Enter' && isAnaRoadMode) {
+                        e.preventDefault();
+                        finishAnaRoad();
+                        return;
+                    } else {
+                        return;
+                    }
+                }
+                if (e.key === 'Enter' && isAnaRoadMode) {
+                    e.preventDefault();
+                    finishAnaRoad();
+                    return;
+                }
+                if (e.key === 'Escape') {
+                    if (isAnaTargetMode || isAnaNoteMode || isAnaRoadMode) {
+                        e.preventDefault();
+                        stopAnalyticsModes();
+                    }
+                    return;
+                }
+                if (e.metaKey || e.ctrlKey || e.altKey) return;
+                const k = String(e.key || '').toLowerCase();
+                if (k === 'r') {
+                    e.preventDefault();
+                    openAccSection('ruler');
+                    document.getElementById('fr-ruler')?.click();
+                } else if (k === 't') {
+                    e.preventDefault();
+                    openAccSection('analytics');
+                    beginAnaTargetPlace();
+                } else if (k === 'd') {
+                    e.preventDefault();
+                    openAccSection('analytics');
+                    beginAnaRoadDraw();
+                } else if (k === 'c') {
+                    e.preventDefault();
+                    openAccSection('analytics');
+                    beginAnaNotePlace();
+                } else if (k === 'p') {
+                    e.preventDefault();
+                    openAccSection('points');
+                    document.getElementById('fr-pick')?.click();
+                }
+            });
+        }
+
+
         function listenToCloudUpdates() {
             if (DB_URL.includes('ВАШ_ПРОЄКТ')) return;
 
@@ -5133,11 +6009,15 @@
             };
         }
 
+        wireAnalyticsUi();
+        wireHotkeys();
         refreshUI();
+        renderAnalytics();
         listenToCloudUpdates();
         listenToFlights();
+        listenToAnalytics();
         if (timestampsRepaired) pushToFirebase(poiStore);
-        console.log(`🦅 FALCONROUTE v2 завантажено! (${mapType === 'google' ? 'Google Maps / R2D2' : 'Cesium'}) — лінійка/політ/синхрон`);
+        console.log(`🦅 FALCONROUTE v2 завантажено! (${mapType === 'google' ? 'Google Maps / R2D2' : 'Cesium'}) — аналітика/дороги/синхрон`);
     }
 
     document.getElementById('falcon-route-ui')?.remove();
