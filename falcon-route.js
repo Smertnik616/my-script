@@ -685,7 +685,7 @@
         };
     }
 
-    const FR_BUILD = 'ana-del-route-26';
+    const FR_BUILD = 'ui-hub-order-27';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1287,7 +1287,7 @@
                     padding: 8px; background: #171b26; border: 1px solid #2a3142; border-radius: 12px;
                 }
                 #falcon-route-ui .fr-qbar {
-                    display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px;
+                    display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;
                 }
                 #falcon-route-ui .fr-qbtn {
                     min-height: 36px !important; height: 36px !important; padding: 0 !important;
@@ -1437,8 +1437,10 @@
                         0 1px 3px rgba(0,0,0,.65);
                 }
                 #falcon-route-ui .fr-qbar-main {
-                    display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px;
+                    display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;
                 }
+                #falcon-route-ui .fr-quick-row-single { grid-template-columns: 1fr; }
+                #falcon-route-ui .fr-btn-wide { width: 100%; }
                 #falcon-route-ui .fr-qbar-sec {
                     display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px;
                 }
@@ -1475,12 +1477,11 @@
             </div>
             <div class="fr-body" id="fr-main">
                 <div class="fr-quick">
-                    <div class="fr-qlabel">Гарячі команди <span class="fr-hotkeys-hint">R · T · D · C · P</span></div>
+                    <div class="fr-qlabel">Гарячі команди <span class="fr-hotkeys-hint">R · T · D · P</span></div>
                     <div class="fr-qbar fr-qbar-main" id="fr-qbar">
                         <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-ruler" title="Лінійка [R]" data-fr-click="fr-ruler" data-fr-acc="ruler"><span class="fr-qk">R</span><span class="fr-qt">Лінійка</span></button>
                         <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-atarget" title="Спільна ціль польоту [T]" data-fr-click="fr-ana-target" data-fr-acc="analytics"><span class="fr-qk">T</span><span class="fr-qt">Ціль</span></button>
                         <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-road" title="Підсвітка дороги [D]" data-fr-click="fr-ana-road" data-fr-acc="analytics"><span class="fr-qk">D</span><span class="fr-qt">Дорога</span></button>
-                        <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-note" title="Мітка з текстом [C]" data-fr-click="fr-ana-note" data-fr-acc="analytics"><span class="fr-qk">C</span><span class="fr-qt">Мітка</span></button>
                         <button type="button" class="fr-qbtn fr-q-labeled" id="fr-q-pick" title="Точка збиття [P]" data-fr-click="fr-pick" data-fr-acc="points"><span class="fr-qk">P</span><span class="fr-qt">Точка</span></button>
                     </div>
                     <div class="fr-qbar fr-qbar-sec">
@@ -1491,82 +1492,25 @@
                         <button type="button" class="fr-qbtn" id="fr-q-attach" title="Прикріпити до треку" data-fr-click="fr-flight-attach" data-fr-acc="flight">🔗</button>
                         <button type="button" class="fr-qbtn" id="fr-q-points" title="Показати / сховати точки" data-fr-cmd="toggle-points" data-fr-acc="filters">👁</button>
                     </div>
-                    <div class="fr-quick-row">
-                        <button class="fr-btn fr-btn-pick" id="fr-pick">🎯 Точка на карті</button>
-                        <button class="fr-btn fr-btn-pick" id="fr-coord-pick">📋 MGRS</button>
+                    <div class="fr-quick-row fr-quick-row-single">
+                        <button class="fr-btn fr-btn-pick" id="fr-pick" style="display:none" aria-hidden="true">🎯 Точка на карті</button>
+                        <button class="fr-btn fr-btn-pick fr-btn-wide" id="fr-coord-pick">📋 MGRS</button>
                     </div>
                 </div>
 
-                <details class="fr-acc" open data-fr-acc="points">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">📍</span>Точки збиття</span></summary>
-                    <div class="fr-acc-body">
-                        <div class="fr-field-grid">
-                            <div class="fr-field">
-                                <label for="fr-means">Збиття</label>
-                                <select id="fr-means"></select>
-                            </div>
-                            <div class="fr-field">
-                                <label for="fr-zasib">Засіб</label>
-                                <select id="fr-zasib"></select>
-                            </div>
-                            <div class="fr-field">
-                                <label for="fr-alt">Висота, м</label>
-                                <input type="number" id="fr-alt" value="${settings.defaultAlt}" step="50" min="0">
-                            </div>
-                            <div class="fr-field">
-                                <label for="fr-default-rad">Радіус, м</label>
-                                <input type="number" id="fr-default-rad" value="${settings.defaultRadius}" step="50">
-                            </div>
-                        </div>
-                        <textarea id="fr-input" placeholder="Встав координати:&#10;48.4501, 34.9802&#10;або з висотою: 48.45, 34.98, 150"></textarea>
-                        <button class="fr-btn fr-btn-wide fr-btn-primary" id="fr-add">＋ Побудувати точки</button>
-                        <div class="fr-count" id="fr-count"><span>Точок: 0</span></div>
-                        <div class="fr-list" id="fr-container"></div>
-                    </div>
-                </details>
 
-                <details class="fr-acc" data-fr-acc="filters">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">🎛</span>Фільтри карти</span></summary>
-                    <div class="fr-acc-body">
-                        <label class="fr-check"><input type="checkbox" id="fr-show-points" ${settings.showPoints ? 'checked' : ''}> Показувати точки на карті</label>
-                        <div class="fr-field">
-                            <label for="fr-time-filter">Період</label>
-                            <select id="fr-time-filter">
-                                <option value="all">Усі</option>
-                                <option value="day">Останні 24 год</option>
-                                <option value="week">Останній тиждень</option>
-                                <option value="month">Останній місяць</option>
-                            </select>
-                        </div>
-                        <div class="fr-field-grid">
-                            <div class="fr-field">
-                                <label for="fr-means-filter">Фільтр збиття</label>
-                                <select id="fr-means-filter"></select>
-                            </div>
-                            <div class="fr-field">
-                                <label for="fr-zasib-filter">Фільтр засобу</label>
-                                <select id="fr-zasib-filter"></select>
-                            </div>
-                        </div>
-                        <div class="fr-legend" id="fr-legend"></div>
-                    </div>
-                </details>
-
-                <details class="fr-acc" data-fr-acc="corridor">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">🛤</span>Коридор</span></summary>
-                    <div class="fr-acc-body">
-                        <div class="fr-hint">Обмежує видимі точки смугою на карті (лише на цей запуск).</div>
-                        <div class="fr-row">
-                            <label>Ширина, м</label>
-                            <input type="number" id="fr-corridor-w" value="${settings.corridorWidth}" step="100" min="100">
-                        </div>
-                        <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-corridor">📐 Малювати</button>
-                            <button class="fr-btn fr-btn-danger" id="fr-corridor-clear">Скинути</button>
-                        </div>
-                        <div class="fr-status muted" id="fr-corridor-status">Коридор не задано</div>
-                    </div>
-                </details>
+                <div class="fr-hub" id="fr-hub">
+                    <button type="button" class="fr-hub-tile" data-fr-acc="ruler"><span class="fr-hub-ico">📏</span><span class="fr-hub-txt">Лінійка</span></button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="analytics"><span class="fr-hub-ico">📊</span><span class="fr-hub-txt">Аналітика</span></button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="corridor"><span class="fr-hub-ico">〰</span><span class="fr-hub-txt">Коридор</span></button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="points"><span class="fr-hub-ico">📍</span><span class="fr-hub-txt">Точки збиття</span></button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="flight"><span class="fr-hub-ico">✈</span><span class="fr-hub-txt">Борт</span></button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="filters"><span class="fr-hub-ico">🎛</span><span class="fr-hub-txt">Фільтри карти</span></button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="coords"><span class="fr-hub-ico">🌐</span><span class="fr-hub-txt">Координати</span></button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="catalog"><span class="fr-hub-ico">🗂</span><span class="fr-hub-txt">Каталоги</span></button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="io"><span class="fr-hub-ico">↕</span><span class="fr-hub-txt">Експорт / імпорт</span></button>
+                </div>
+                <button type="button" class="fr-btn fr-btn-wide" id="fr-hub-back" style="display:none;margin-bottom:8px">← До меню</button>
 
                 <details class="fr-acc" data-fr-acc="ruler">
                     <summary><span class="fr-acc-title"><span class="fr-acc-ico">📏</span>Лінійка</span></summary>
@@ -1597,39 +1541,7 @@
                     </div>
                 </details>
 
-                <details class="fr-acc" open data-fr-acc="flight">
-                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">✈</span>Борт</span></summary>
-                    <div class="fr-acc-body">
-                        <div class="fr-hint">«Летіти» — рух за курсом. «Прикріпити до треку» — слідувати за стрілкою на карті-хості. Швидкість спільна з лінійкою.</div>
-                        <div class="fr-field-grid">
-                            <div class="fr-field">
-                                <label for="fr-callsign">Позивний</label>
-                                <input type="text" id="fr-callsign" value="${settings.callsign || 'Falcon'}" maxlength="16" placeholder="Falcon">
-                            </div>
-                            <div class="fr-field">
-                                <label for="fr-flight-color">Колір</label>
-                                <input type="color" id="fr-flight-color" value="${settings.flightColor || '#22d3ee'}">
-                            </div>
-                        </div>
-                        <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-flight-place">📍 Поставити</button>
-                            <button class="fr-btn fr-btn-ok" id="fr-flight-goto">✈ Летіти</button>
-                        </div>
-                        <button class="fr-btn fr-btn-wide" id="fr-flight-attach">🔗 Прикріпити до треку</button>
-                        <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-flight-stop">⏹ Прибрати борт</button>
-                        <div class="fr-status muted" id="fr-flight-status">Борт не виставлено</div>
-                        <div class="fr-field">
-                            <label for="fr-range-target">Дистанція до борта</label>
-                            <select id="fr-range-target">
-                                <option value="">— не вимірювати —</option>
-                            </select>
-                        </div>
-                        <div class="fr-ruler-total" id="fr-flight-range">Обери борт для вимірювання</div>
-                        <div class="fr-label" id="fr-flight-distances" style="white-space:pre-line;opacity:.85">Немає інших бортів онлайн</div>
-                    </div>
-                </details>
-
-                <details class="fr-acc" open data-fr-acc="analytics">
+                <details class="fr-acc" data-fr-acc="analytics">
                     <summary><span class="fr-acc-title"><span class="fr-acc-ico">📡</span>Аналітика</span></summary>
                     <div class="fr-acc-body">
                         <div class="fr-hint">Спільні цілі/дороги/мітки бачать усі в кімнаті. Дорога: клік <b>початок</b> і <b>кінець</b> — маршрут з поворотами сам; ще кліки — коригування через точку.</div>
@@ -1662,6 +1574,110 @@
                         <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ana-clear">Скинути всю аналітику</button>
                         <div class="fr-status muted" id="fr-ana-status">Немає спільних позначок</div>
                         <div class="fr-list" id="fr-ana-list"></div>
+                    </div>
+                </details>
+
+                <details class="fr-acc" data-fr-acc="corridor">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">🛤</span>Коридор</span></summary>
+                    <div class="fr-acc-body">
+                        <div class="fr-hint">Обмежує видимі точки смугою на карті (лише на цей запуск).</div>
+                        <div class="fr-row">
+                            <label>Ширина, м</label>
+                            <input type="number" id="fr-corridor-w" value="${settings.corridorWidth}" step="100" min="100">
+                        </div>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-pick" id="fr-corridor">📐 Малювати</button>
+                            <button class="fr-btn fr-btn-danger" id="fr-corridor-clear">Скинути</button>
+                        </div>
+                        <div class="fr-status muted" id="fr-corridor-status">Коридор не задано</div>
+                    </div>
+                </details>
+
+                <details class="fr-acc" data-fr-acc="points">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">📍</span>Точки збиття</span></summary>
+                    <div class="fr-acc-body">
+                        <button class="fr-btn fr-btn-pick fr-btn-wide" id="fr-pick-visible" data-fr-click="fr-pick">🎯 Поставити точку на карті</button>
+                        <div class="fr-field-grid">
+                            <div class="fr-field">
+                                <label for="fr-means">Збиття</label>
+                                <select id="fr-means"></select>
+                            </div>
+                            <div class="fr-field">
+                                <label for="fr-zasib">Засіб</label>
+                                <select id="fr-zasib"></select>
+                            </div>
+                            <div class="fr-field">
+                                <label for="fr-alt">Висота, м</label>
+                                <input type="number" id="fr-alt" value="${settings.defaultAlt}" step="50" min="0">
+                            </div>
+                            <div class="fr-field">
+                                <label for="fr-default-rad">Радіус, м</label>
+                                <input type="number" id="fr-default-rad" value="${settings.defaultRadius}" step="50">
+                            </div>
+                        </div>
+                        <textarea id="fr-input" placeholder="Встав координати:&#10;48.4501, 34.9802&#10;або з висотою: 48.45, 34.98, 150"></textarea>
+                        <button class="fr-btn fr-btn-wide fr-btn-primary" id="fr-add">＋ Побудувати точки</button>
+                        <div class="fr-count" id="fr-count"><span>Точок: 0</span></div>
+                        <div class="fr-list" id="fr-container"></div>
+                    </div>
+                </details>
+
+                <details class="fr-acc" data-fr-acc="flight">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">✈</span>Борт</span></summary>
+                    <div class="fr-acc-body">
+                        <div class="fr-hint">«Летіти» — рух за курсом. «Прикріпити до треку» — слідувати за стрілкою на карті-хості. Швидкість спільна з лінійкою.</div>
+                        <div class="fr-field-grid">
+                            <div class="fr-field">
+                                <label for="fr-callsign">Позивний</label>
+                                <input type="text" id="fr-callsign" value="${settings.callsign || 'Falcon'}" maxlength="16" placeholder="Falcon">
+                            </div>
+                            <div class="fr-field">
+                                <label for="fr-flight-color">Колір</label>
+                                <input type="color" id="fr-flight-color" value="${settings.flightColor || '#22d3ee'}">
+                            </div>
+                        </div>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-pick" id="fr-flight-place">📍 Поставити</button>
+                            <button class="fr-btn fr-btn-ok" id="fr-flight-goto">✈ Летіти</button>
+                        </div>
+                        <button class="fr-btn fr-btn-wide" id="fr-flight-attach">🔗 Прикріпити до треку</button>
+                        <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-flight-stop">⏹ Прибрати борт</button>
+                        <div class="fr-status muted" id="fr-flight-status">Борт не виставлено</div>
+                        <div class="fr-field">
+                            <label for="fr-range-target">Дистанція до борта</label>
+                            <select id="fr-range-target">
+                                <option value="">— не вимірювати —</option>
+                            </select>
+                        </div>
+                        <div class="fr-ruler-total" id="fr-flight-range">Обери борт для вимірювання</div>
+                        <div class="fr-label" id="fr-flight-distances" style="white-space:pre-line;opacity:.85">Немає інших бортів онлайн</div>
+                    </div>
+                </details>
+
+                <details class="fr-acc" data-fr-acc="filters">
+                    <summary><span class="fr-acc-title"><span class="fr-acc-ico">🎛</span>Фільтри карти</span></summary>
+                    <div class="fr-acc-body">
+                        <label class="fr-check"><input type="checkbox" id="fr-show-points" ${settings.showPoints ? 'checked' : ''}> Показувати точки на карті</label>
+                        <div class="fr-field">
+                            <label for="fr-time-filter">Період</label>
+                            <select id="fr-time-filter">
+                                <option value="all">Усі</option>
+                                <option value="day">Останні 24 год</option>
+                                <option value="week">Останній тиждень</option>
+                                <option value="month">Останній місяць</option>
+                            </select>
+                        </div>
+                        <div class="fr-field-grid">
+                            <div class="fr-field">
+                                <label for="fr-means-filter">Фільтр збиття</label>
+                                <select id="fr-means-filter"></select>
+                            </div>
+                            <div class="fr-field">
+                                <label for="fr-zasib-filter">Фільтр засобу</label>
+                                <select id="fr-zasib-filter"></select>
+                            </div>
+                        </div>
+                        <div class="fr-legend" id="fr-legend"></div>
                     </div>
                 </details>
 
@@ -1782,6 +1798,8 @@
                 } catch (_) { /* ignore */ }
             });
         });
+        showHubMode();
+
 
         // Скрол лише в панелі — не віддавати колесо карті / не «згортати» огляд
         const stopScrollBubble = (e) => e.stopPropagation();
@@ -3643,11 +3661,24 @@
             syncQuickBar();
         }
 
+        function showHubMode() {
+            panel.classList.add('fr-hub-mode');
+            panel.classList.remove('fr-section-mode');
+            panel.querySelectorAll('details.fr-acc').forEach((d) => { d.open = false; });
+            const back = document.getElementById('fr-hub-back');
+            if (back) back.style.display = 'none';
+        }
+
         function openAccSection(name) {
             if (!name) return;
             const d = panel.querySelector(`details.fr-acc[data-fr-acc="${name}"]`);
             if (!d) return;
+            panel.classList.remove('fr-hub-mode');
+            panel.classList.add('fr-section-mode');
+            panel.querySelectorAll('details.fr-acc').forEach((el) => { el.open = el === d; });
             d.open = true;
+            const back = document.getElementById('fr-hub-back');
+            if (back) back.style.display = '';
             try { d.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) { /* ignore */ }
         }
 
@@ -3691,6 +3722,10 @@
             const delBtn = document.getElementById('fr-ana-delete');
             if (delBtn) delBtn.classList.toggle('active', isAnaDeleteMode);
         }
+
+        document.getElementById('fr-pick-visible')?.addEventListener('click', () => {
+            document.getElementById('fr-pick')?.click();
+        });
 
         function wireQuickBar() {
             const bar = document.querySelector('#falcon-route-ui .fr-quick');
@@ -5104,6 +5139,13 @@
         updateAttachBtn();
         wireQuickBar();
         syncQuickBar();
+        panel.classList.add('fr-hub-mode');
+        document.getElementById('fr-hub')?.addEventListener('click', (e) => {
+            const tile = e.target?.closest?.('.fr-hub-tile');
+            if (!tile || !panel.contains(tile)) return;
+            openAccSection(tile.getAttribute('data-fr-acc'));
+        });
+        document.getElementById('fr-hub-back')?.addEventListener('click', () => showHubMode());
         document.getElementById('fr-range-target').addEventListener('change', (e) => {
             rangeTargetId = e.target.value || '';
         });
@@ -6316,10 +6358,6 @@
                     e.preventDefault();
                     openAccSection('analytics');
                     beginAnaRoadDraw();
-                } else if (k === 'c') {
-                    e.preventDefault();
-                    openAccSection('analytics');
-                    beginAnaNotePlace();
                 } else if (k === 'p') {
                     e.preventDefault();
                     openAccSection('points');
