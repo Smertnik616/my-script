@@ -819,7 +819,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-39';
+    const FR_BUILD = 'ui-clean-40';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1338,9 +1338,9 @@ function formatCoord(lat, lon, format) {
                 }
                 #falcon-route-ui .fr-icon-btn:hover { background: #1e293b; color: #fff; border-color: #475569; }
                 #falcon-route-ui .fr-body {
-                    padding: 10px 10px 12px; flex: 1 1 auto; min-height: 0;
+                    padding: 8px 8px 10px; flex: 1 1 auto; min-height: 0;
                     overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
-                    -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 8px;
+                    -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px;
                 }
                 #falcon-route-ui .fr-body.hidden { display: none; }
                 #falcon-route-ui.fr-collapsed { height: auto !important; max-height: none; }
@@ -1396,8 +1396,8 @@ function formatCoord(lat, lon, format) {
                     cursor: pointer; user-select: none; pointer-events: auto !important; font-size: 12px;
                 }
                 #falcon-route-ui .fr-row select, #falcon-route-ui select { flex: 1 1 auto; min-width: 0; width: auto; }
-                #falcon-route-ui .fr-grid { display: grid !important; grid-template-columns: 1fr 1fr; gap: 6px; }
-                #falcon-route-ui .fr-grid-3 { display: grid !important; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+                #falcon-route-ui .fr-grid { display: grid !important; grid-template-columns: 1fr 1fr; gap: 5px; }
+                #falcon-route-ui .fr-grid-3 { display: grid !important; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
 
                 #falcon-route-ui .fr-btn {
                     background: #1e2433; color: #e2e8f0; border: 1px solid #323849;
@@ -1475,7 +1475,7 @@ function formatCoord(lat, lon, format) {
                 #falcon-route-ui details.fr-acc[open] > summary::after { transform: rotate(180deg); }
                 #falcon-route-ui details.fr-acc > summary:hover { background: #20283a; }
                 #falcon-route-ui details.fr-acc .fr-acc-body {
-                    display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px;
+                    display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px;
                     border-top: 1px solid #2a3142;
                 }
                 #falcon-route-ui .fr-acc-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -1486,8 +1486,8 @@ function formatCoord(lat, lon, format) {
                 #falcon-route-ui .fr-hint { color: #94a3b8; font-size: 10px; line-height: 1.4; }
                 #falcon-route-ui .fr-status {
                     background: #0b0e14; border: 1px solid #2a3142; border-radius: 8px;
-                    padding: 8px 10px; color: #bae6fd; font-size: 11px; font-weight: 650; line-height: 1.35;
-                    min-height: 34px;
+                    padding: 6px 8px; color: #bae6fd; font-size: 11px; font-weight: 650; line-height: 1.3;
+                    min-height: 0;
                 }
                 #falcon-route-ui .fr-status.muted { color: #94a3b8; font-weight: 500; }
                 #falcon-route-ui .fr-section { border-top: none; padding-top: 0; display: flex !important; flex-direction: column; gap: 8px; }
@@ -1634,8 +1634,8 @@ function formatCoord(lat, lon, format) {
                 }
                 #falcon-route-ui .fr-hot {
                     position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
-                    gap:4px; min-height:58px; border-radius:12px; border:1px solid #2a3548;
-                    background:#121826; color:#e2e8f0; cursor:pointer; padding:8px 4px;
+                    gap:2px; min-height:48px; border-radius:10px; border:1px solid #2a3548;
+                    background:#121826; color:#e2e8f0; cursor:pointer; padding:6px 3px;
                 }
                 #falcon-route-ui .fr-hot:hover, #falcon-route-ui .fr-hot.active {
                     border-color:#38bdf8; background:#152033;
@@ -1646,26 +1646,26 @@ function formatCoord(lat, lon, format) {
                 #falcon-route-ui .fr-hot-ico { font-size:16px; line-height:1; color:#7dd3fc; }
                 #falcon-route-ui .fr-hot-t { font-size:10px; font-weight:650; color:#cbd5e1; }
                 #falcon-route-ui .fr-mgrs {
-                    width:100%; min-height:40px; border-radius:12px; border:1px solid #2a3548;
+                    width:100%; min-height:34px; border-radius:10px; border:1px solid #2a3548;
                     background:#152033; color:#e2e8f0; display:flex; align-items:center; justify-content:center;
-                    gap:8px; font-weight:700; cursor:pointer;
+                    gap:6px; font-weight:700; cursor:pointer;
                 }
                 #falcon-route-ui .fr-mgrs:hover, #falcon-route-ui .fr-mgrs.active { border-color:#38bdf8; }
                 #falcon-route-ui .fr-hub {
-                    display:grid !important; grid-template-columns:repeat(3,1fr); gap:8px;
+                    display:grid !important; grid-template-columns:repeat(3,1fr); gap:6px;
                 }
                 #falcon-route-ui .fr-hub-lead {
-                    grid-column:1 / -1; font-size:11px; line-height:1.35; color:#94a3b8;
-                    background:#121826; border:1px solid #1f2937; border-radius:10px; padding:8px 10px;
+                    grid-column:1 / -1; font-size:10px; line-height:1.3; color:#94a3b8;
+                    background:#121826; border:1px solid #1f2937; border-radius:8px; padding:6px 8px;
                 }
                 #falcon-route-ui .fr-hub-tile {
-                    min-height:86px !important; align-items:flex-start !important; justify-content:flex-start !important;
-                    padding:12px 10px !important; gap:6px !important; background:#121826 !important;
-                    border:1px solid #243044 !important; border-radius:14px !important;
+                    min-height:64px !important; align-items:flex-start !important; justify-content:flex-start !important;
+                    padding:8px 9px !important; gap:3px !important; background:#121826 !important;
+                    border:1px solid #243044 !important; border-radius:12px !important;
                 }
                 #falcon-route-ui .fr-hub-ico { font-size:18px !important; color:#38bdf8 !important; }
                 #falcon-route-ui .fr-hub-txt { font-size:12px !important; font-weight:750 !important; color:#f1f5f9 !important; text-align:left !important; }
-                #falcon-route-ui .fr-hub-desc { font-size:10px; color:#64748b; text-align:left; line-height:1.25; }
+                #falcon-route-ui .fr-hub-desc { font-size:9px; color:#64748b; text-align:left; line-height:1.2; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
                 #falcon-route-ui .fr-back {
                     width:100%; min-height:36px; border-radius:10px; border:1px solid #334155;
                     background:#152033; color:#e2e8f0; font-weight:700; cursor:pointer;
@@ -1761,8 +1761,8 @@ function formatCoord(lat, lon, format) {
                             <span class="fr-hot-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.8"/><path d="M12 2.8v3.2M12 18v3.2M2.8 12h3.2M18 12h3.2"/></svg></span>
                             <span class="fr-hot-t">Ціль</span>
                         </button>
-                        <button type="button" class="fr-hot" id="fr-q-road" title="Дорога A→B [B]" data-fr-click="fr-ana-road" data-fr-acc="analytics">
-                            <span class="fr-hot-k">D</span>
+                        <button type="button" class="fr-hot" id="fr-q-road" title="Дорога A→B [W]" data-fr-click="fr-ana-road" data-fr-acc="analytics">
+                            <span class="fr-hot-k">W</span>
                             <span class="fr-hot-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3l-3 18M17 3l3 18"/><path d="M12 5v2.5M12 11v2.5M12 17v2.5"/></svg></span>
                             <span class="fr-hot-t">Дорога</span>
                         </button>
@@ -1792,7 +1792,7 @@ function formatCoord(lat, lon, format) {
                 </div>
 
                 <div class="fr-hub" id="fr-hub">
-                    <div class="fr-hub-lead">Q — координати · клік по точці — видалити · дорога A→B</div>
+                    <div class="fr-hub-lead">Q координати · D видалити · W дорога · G заборона</div>
                     <button type="button" class="fr-hub-tile" data-fr-acc="ruler">
                         <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="10.5" width="17" height="5" rx="1" transform="rotate(-35 12 13)"/><path d="M6.2 14.6l1.1-1.1M8.4 13.1l1.1-1.1M10.6 11.5l1.1-1.1M12.8 10l1.1-1.1M15 8.4l1.1-1.1"/></svg></span>
                         <span class="fr-hub-txt">Лінійка</span>
@@ -1873,38 +1873,36 @@ function formatCoord(lat, lon, format) {
                 <details class="fr-acc" data-fr-acc="analytics">
                     <summary><span class="fr-acc-title">Аналітика</span></summary>
                     <div class="fr-acc-body">
-                        <div class="fr-hint">Спільна аналітика: <b>ціль [T]</b>, <b>заборона [G]</b> (знак ⛔), <b>дорога [B]</b>, мітки. <b>Видалення [D]</b> — клік по позначці на карті або ✕ у списку.</div>
-                        <div class="fr-field">
-                            <label for="fr-ana-text">Текст (опційно)</label>
-                            <input type="text" id="fr-ana-text" placeholder="Назва цілі / мітки" maxlength="48">
-                        </div>
+                        <div class="fr-hint">T ціль · G заборона · W дорога · D видалити · мітка з текстом нижче</div>
                         <div class="fr-field-grid">
+                            <div class="fr-field">
+                                <label for="fr-ana-text">Текст</label>
+                                <input type="text" id="fr-ana-text" placeholder="опційно" maxlength="48">
+                            </div>
                             <div class="fr-field">
                                 <label for="fr-ana-color">Колір</label>
                                 <input type="color" id="fr-ana-color" value="#fbbf24">
                             </div>
-                            <div class="fr-field">
-                                <label for="fr-ana-road-op">Прозорість дороги</label>
-                                <input type="number" id="fr-ana-road-op" value="0.4" min="0.15" max="0.85" step="0.05">
-                            </div>
+                        </div>
+                        <div class="fr-grid-3">
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-target">Ціль [T]</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-ban">⛔ [G]</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-road">Дорога [W]</button>
                         </div>
                         <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-ana-target">Ціль польоту [T]</button>
-                            <button class="fr-btn fr-btn-pick" id="fr-ana-note">Мітка + текст</button>
-                        </div>
-                        <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-ana-ban">Заборона [G]</button>
-                            <button class="fr-btn fr-btn-pick" id="fr-ana-road">Дорога A→B [B]</button>
-                        </div>
-                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-note">Мітка</button>
                             <button class="fr-btn" id="fr-ana-road-finish">Застосувати</button>
-                            <button class="fr-btn" id="fr-ana-road-undo">Скасувати точку</button>
+                        </div>
+                        <div class="fr-row" style="min-height:auto;gap:6px">
+                            <label for="fr-ana-road-op" style="white-space:nowrap">Проз. дороги</label>
+                            <input type="number" id="fr-ana-road-op" value="0.4" min="0.15" max="0.85" step="0.05" style="width:72px;margin-left:auto">
                         </div>
                         <div class="fr-grid">
-                            <button class="fr-btn fr-btn-danger" id="fr-ana-delete">Видалити з карти [D]</button>
+                            <button class="fr-btn" id="fr-ana-road-undo">Скасувати</button>
+                            <button class="fr-btn fr-btn-danger" id="fr-ana-delete">Видалити [D]</button>
                         </div>
-                        <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ana-clear">Скинути всю аналітику</button>
-                        <div class="fr-status muted" id="fr-ana-status">Немає спільних позначок</div>
+                        <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ana-clear">Скинути все</button>
+                        <div class="fr-status muted" id="fr-ana-status">Немає позначок</div>
                         <div class="fr-list" id="fr-ana-list"></div>
                     </div>
                 </details>
@@ -7082,7 +7080,7 @@ function formatCoord(lat, lon, format) {
                         e.stopPropagation();
                         openAccSection('analytics');
                         beginAnaDeleteMode();
-                    } else if (isKey('KeyB', 'b', 'и')) {
+                    } else if (isKey('KeyW', 'w', 'ц')) {
                         e.preventDefault();
                         e.stopPropagation();
                         openAccSection('analytics');
