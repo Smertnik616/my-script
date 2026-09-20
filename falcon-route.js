@@ -819,7 +819,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-34';
+    const FR_BUILD = 'ui-clean-35';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1770,7 +1770,7 @@ function formatCoord(lat, lon, format) {
                             <span class="fr-hot-t">Точка</span>
                         </button>
                     </div>
-                    <button type="button" class="fr-mgrs" id="fr-coord-pick" data-fr-click="fr-coord-pick" title="Скопіювати координати кліком на карті [Q]">
+                    <button type="button" class="fr-mgrs" id="fr-coord-pick" title="Скопіювати координати кліком на карті [Q]">
                         <span class="fr-mgrs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="1.5"/><path d="M9 8h6M9 12h6M9 16h4"/><path d="M15 3.5v4h4"/></svg></span>
                         <span>MGRS</span>
                         <span class="fr-hot-k" style="position:static;margin-left:4px">Q</span>
@@ -3321,15 +3321,10 @@ function formatCoord(lat, lon, format) {
         }
 
         async function copyText(text, btn, okLabel) {
-            const prev = btn.textContent;
+            let ok = false;
             try {
                 await navigator.clipboard.writeText(text);
-                btn.textContent = okLabel || '✅ Скопійовано!';
-                btn.classList.add('fr-btn-ok');
-                setTimeout(() => {
-                    btn.textContent = prev;
-                    btn.classList.remove('fr-btn-ok');
-                }, 1600);
+                ok = true;
             } catch (_) {
                 const ta = document.createElement('textarea');
                 ta.value = text;
@@ -3337,18 +3332,26 @@ function formatCoord(lat, lon, format) {
                 document.body.appendChild(ta);
                 ta.select();
                 try {
-                    document.execCommand('copy');
-                    btn.textContent = okLabel || '✅ Скопійовано!';
-                    btn.classList.add('fr-btn-ok');
-                    setTimeout(() => {
-                        btn.textContent = prev;
-                        btn.classList.remove('fr-btn-ok');
-                    }, 1600);
+                    ok = document.execCommand('copy');
                 } catch (e2) {
-                    alert('Не вдалося скопіювати.');
+                    ok = false;
                 }
-                document.body.removeChild(ta);
+                try { document.body.removeChild(ta); } catch (_) { /* ignore */ }
             }
+            // Не ламаємо SVG-кнопки (MGRS) — лише текстові
+            const canFlash = btn && !btn.querySelector?.('svg');
+            if (canFlash) {
+                const prev = btn.textContent;
+                btn.textContent = ok ? (okLabel || '✅ Скопійовано!') : '❌ Помилка';
+                if (ok) btn.classList.add('fr-btn-ok');
+                setTimeout(() => {
+                    btn.textContent = prev;
+                    btn.classList.remove('fr-btn-ok');
+                }, 1600);
+            } else if (!ok) {
+                alert('Не вдалося скопіювати.');
+            }
+            return ok;
         }
 
         function renderList() {
@@ -3745,8 +3748,7 @@ function formatCoord(lat, lon, format) {
             openAccSection('coords');
         }
 
-        const coordPickBtn = document.getElementById('fr-coord-pick');
-        if (coordPickBtn) coordPickBtn.onclick = () => beginCoordPickMode();
+        // MGRS у шапці обробляє wireQuickBar (клас .fr-mgrs). Тут лише панель координат.
         document.getElementById('fr-coord-pick-panel')?.addEventListener('click', () => beginCoordPickMode());
         document.getElementById('fr-coord-place')?.addEventListener('click', () => placeAnalyticsPointFromCoords());
         document.getElementById('fr-coord-input')?.addEventListener('keydown', (e) => {
@@ -4145,9 +4147,12 @@ function formatCoord(lat, lon, format) {
 
         function wireQuickBar() {
             const bar = document.querySelector('#falcon-route-ui .fr-quick');
-            if (!bar || bar.__frWired) return;
-            bar.__frWired = true;
-            bar.addEventListener('click', (e) => {
+            if (!bar) return;
+            if (bar.__frQuickHandler) {
+                bar.removeEventListener('click', bar.__frQuickHandler);
+                bar.__frQuickHandler = null;
+            }
+            const onQuick = (e) => {
                 const btn = e.target?.closest?.('.fr-qbtn, .fr-hot, .fr-mgrs');
                 if (!btn || !bar.contains(btn)) return;
                 e.preventDefault();
@@ -4166,9 +4171,18 @@ function formatCoord(lat, lon, format) {
                     return;
                 }
                 const targetId = btn.getAttribute('data-fr-click');
+                // MGRS / Q: без .click() на себе (інакше рекурсія ON→OFF)
+                if (targetId === 'fr-coord-pick' || btn.id === 'fr-coord-pick') {
+                    beginCoordPickMode();
+                    syncQuickBar();
+                    return;
+                }
                 if (targetId) document.getElementById(targetId)?.click();
                 syncQuickBar();
-            });
+            };
+            bar.__frQuickHandler = onQuick;
+            bar.addEventListener('click', onQuick);
+            bar.__frWired = true;
             syncQuickBar();
         }
 
@@ -5581,6 +5595,11 @@ function formatCoord(lat, lon, format) {
                 return;
             }
             const id = btn.getAttribute('data-fr-click');
+            if (id === 'fr-coord-pick') {
+                beginCoordPickMode();
+                syncQuickBar();
+                return;
+            }
             if (id) document.getElementById(id)?.click();
             syncQuickBar();
         });
@@ -6773,9 +6792,11 @@ function formatCoord(lat, lon, format) {
         }
 
         function wireHotkeys() {
-            if (window.__frHotkeysWired) return;
-            window.__frHotkeysWired = true;
-            document.addEventListener('keydown', (e) => {
+            if (window.__frHotkeyHandler) {
+                document.removeEventListener('keydown', window.__frHotkeyHandler);
+                window.__frHotkeyHandler = null;
+            }
+            const onKey = (e) => {
                 if (accessRevoked) return;
                 const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
                 if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) {
@@ -6827,7 +6848,10 @@ function formatCoord(lat, lon, format) {
                     e.preventDefault();
                     beginCoordPickMode();
                 }
-            });
+            };
+            window.__frHotkeyHandler = onKey;
+            document.addEventListener('keydown', onKey);
+            window.__frHotkeysWired = true;
         }
 
 
