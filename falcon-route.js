@@ -820,7 +820,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-43';
+    const FR_BUILD = 'ui-clean-44';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -7246,11 +7246,6 @@ function formatCoord(lat, lon, format) {
         wireAnalyticsUi();
         wireHotkeys();
         wireHostMenuGuard();
-        document.getElementById('fr-host-lmb')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleHostLmbBlock();
-        });
         syncHostLmbToggleUi();
         refreshUI();
         renderAnalytics();
