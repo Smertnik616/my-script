@@ -274,7 +274,8 @@
         rulerSpeedKmh: 5,
         rulerColor: '#22d3ee',
         callsign: 'Falcon',
-        flightColor: '#22d3ee'
+        flightColor: '#22d3ee',
+        blockHostLmb: true // блокувати ЛКМ-меню хоста під час інструментів FR
     };
 
     function formatDistanceKm(meters) {
@@ -819,7 +820,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-42';
+    const FR_BUILD = 'ui-clean-43';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1676,6 +1677,22 @@ function formatCoord(lat, lon, format) {
                     gap:6px; font-weight:700; cursor:pointer;
                 }
                 #falcon-route-ui .fr-mgrs:hover, #falcon-route-ui .fr-mgrs.active { border-color:#38bdf8; }
+                #falcon-route-ui .fr-quick-row {
+                    display:grid; grid-template-columns:1fr auto; gap:6px; align-items:stretch;
+                }
+                #falcon-route-ui .fr-host-lmb {
+                    min-width:72px; min-height:34px; border-radius:10px; border:1px solid #2a3548;
+                    background:#152033; color:#e2e8f0; display:flex; flex-direction:column;
+                    align-items:center; justify-content:center; gap:1px; font-weight:700; cursor:pointer;
+                    padding:4px 8px; line-height:1.1;
+                }
+                #falcon-route-ui .fr-host-lmb:hover { border-color:#38bdf8; }
+                #falcon-route-ui .fr-host-lmb.active {
+                    border-color:#f59e0b; background:#422006; color:#fde68a;
+                }
+                #falcon-route-ui .fr-host-lmb .fr-host-lmb-k { font-size:9px; color:#94a3b8; font-weight:650; }
+                #falcon-route-ui .fr-host-lmb.active .fr-host-lmb-k { color:#fbbf24; }
+                #falcon-route-ui .fr-host-lmb .fr-host-lmb-t { font-size:10px; }
                 #falcon-route-ui .fr-hub {
                     display:grid !important; grid-template-columns:repeat(3,1fr); gap:6px;
                 }
@@ -1798,11 +1815,18 @@ function formatCoord(lat, lon, format) {
                             <span class="fr-hot-t">Точка</span>
                         </button>
                     </div>
-                    <button type="button" class="fr-mgrs" id="fr-coord-pick" title="Скопіювати координати кліком на карті [Q]">
-                        <span class="fr-mgrs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="1.5"/><path d="M9 8h6M9 12h6M9 16h4"/><path d="M15 3.5v4h4"/></svg></span>
-                        <span>MGRS</span>
-                        <span class="fr-hot-k" style="position:static;margin-left:4px">Q</span>
-                    </button>
+                    <div class="fr-quick-row">
+                        <button type="button" class="fr-mgrs" id="fr-coord-pick" title="Скопіювати координати кліком на карті [Q]">
+                            <span class="fr-mgrs-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="1.5"/><path d="M9 8h6M9 12h6M9 16h4"/><path d="M15 3.5v4h4"/></svg></span>
+                            <span>MGRS</span>
+                            <span class="fr-hot-k" style="position:static;margin-left:4px">Q</span>
+                        </button>
+                        <button type="button" class="fr-host-lmb active" id="fr-host-lmb" data-fr-cmd="toggle-host-lmb"
+                            title="Блок ЛКМ-меню хоста під час інструментів (увімкнено). Клацни — дозволити меню хоста.">
+                            <span class="fr-host-lmb-t">Хост ЛКМ</span>
+                            <span class="fr-host-lmb-k" id="fr-host-lmb-state">блок</span>
+                        </button>
+                    </div>
                     <button class="fr-btn fr-btn-pick" id="fr-pick" style="display:none" aria-hidden="true">pick</button>
                     <div class="fr-hidden-actions" style="display:none" aria-hidden="true">
                         <button type="button" id="fr-q-aim" data-fr-click="fr-aim-place" data-fr-acc="ruler"></button>
@@ -1818,7 +1842,7 @@ function formatCoord(lat, lon, format) {
                 </div>
 
                 <div class="fr-hub" id="fr-hub">
-                    <div class="fr-hub-lead">Q координати · D видалити · W дорога · G заборона</div>
+                    <div class="fr-hub-lead">Q координати · D видалити · W дорога · G заборона · Хост ЛКМ — меню карти</div>
                     <button type="button" class="fr-hub-tile" data-fr-acc="ruler">
                         <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="10.5" width="17" height="5" rx="1" transform="rotate(-35 12 13)"/><path d="M6.2 14.6l1.1-1.1M8.4 13.1l1.1-1.1M10.6 11.5l1.1-1.1M12.8 10l1.1-1.1M15 8.4l1.1-1.1"/></svg></span>
                         <span class="fr-hub-txt">Лінійка</span>
@@ -2214,6 +2238,7 @@ function formatCoord(lat, lon, format) {
             settings.timeFilter = document.getElementById('fr-time-filter').value;
             settings.meansFilter = document.getElementById('fr-means-filter').value;
             settings.zasibFilter = document.getElementById('fr-zasib-filter').value;
+            // blockHostLmb зберігається окремо в toggleHostLmbBlock
             localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
         }
 
@@ -4176,6 +4201,7 @@ function formatCoord(lat, lon, format) {
             if (delBtn) delBtn.classList.toggle('active', isAnaDeleteMode);
             const banBtn = document.getElementById('fr-ana-ban');
             if (banBtn) banBtn.classList.toggle('active', isAnaBanMode);
+            syncHostLmbToggleUi();
         }
 
         document.getElementById('fr-pick-visible')?.addEventListener('click', () => {
@@ -4190,7 +4216,7 @@ function formatCoord(lat, lon, format) {
                 bar.__frQuickHandler = null;
             }
             const onQuick = (e) => {
-                const btn = e.target?.closest?.('.fr-qbtn, .fr-hot, .fr-mgrs');
+                const btn = e.target?.closest?.('.fr-qbtn, .fr-hot, .fr-mgrs, .fr-host-lmb');
                 if (!btn || !bar.contains(btn)) return;
                 e.preventDefault();
                 e.stopPropagation();
@@ -4205,6 +4231,10 @@ function formatCoord(lat, lon, format) {
                         cb.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                     syncQuickBar();
+                    return;
+                }
+                if (cmd === 'toggle-host-lmb') {
+                    toggleHostLmbBlock();
                     return;
                 }
                 const targetId = btn.getAttribute('data-fr-click');
@@ -6934,6 +6964,30 @@ function formatCoord(lat, lon, format) {
             );
         }
 
+        function isHostLmbBlockEnabled() {
+            return settings.blockHostLmb !== false;
+        }
+
+        function syncHostLmbToggleUi() {
+            const btn = document.getElementById('fr-host-lmb');
+            const st = document.getElementById('fr-host-lmb-state');
+            const on = isHostLmbBlockEnabled();
+            if (btn) {
+                btn.classList.toggle('active', on);
+                btn.title = on
+                    ? 'Блок ЛКМ-меню хоста УВІМКНЕНО (під час інструментів). Клацни — дозволити меню хоста.'
+                    : 'Блок ЛКМ-меню хоста ВИМКНЕНО — меню хоста на ЛКМ доступне. Клацни — знову блокувати.';
+            }
+            if (st) st.textContent = on ? 'блок' : 'дозв.';
+        }
+
+        function toggleHostLmbBlock() {
+            settings.blockHostLmb = !isHostLmbBlockEnabled();
+            try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) { /* ignore */ }
+            syncHostLmbToggleUi();
+            syncQuickBar();
+        }
+
         function isHostCoordMenuEl(el) {
             if (!el || el.nodeType !== 1) return false;
             if (el.id === 'falcon-route-ui' || el.closest?.('#falcon-route-ui')) return false;
@@ -6967,6 +7021,7 @@ function formatCoord(lat, lon, format) {
         }
 
         function scheduleKillHostCoordMenus() {
+            if (!isHostLmbBlockEnabled()) return;
             if (!isFrMapToolActive()) return;
             killHostCoordMenus();
             try { requestAnimationFrame(() => killHostCoordMenus()); } catch (_) { /* ignore */ }
@@ -6994,6 +7049,7 @@ function formatCoord(lat, lon, format) {
                 } catch (_) { /* ignore */ }
             }
             const onPtr = (e) => {
+                if (!isHostLmbBlockEnabled()) return;
                 if (!isFrMapToolActive()) return;
                 if (e.target?.closest?.('#falcon-route-ui')) return;
                 // Глушимо рідне ПКМ-меню; ЛКМ-меню хоста прибираємо з DOM
@@ -7018,6 +7074,7 @@ function formatCoord(lat, lon, format) {
                     : (map?.canvas?.parentElement || map?.container || null);
                 if (mapRoot && !mapRoot.__frHostMenuBubbleStop) {
                     mapRoot.__frHostMenuBubbleStop = (e) => {
+                        if (!isHostLmbBlockEnabled()) return;
                         if (!isFrMapToolActive()) return;
                         if (e.target?.closest?.('#falcon-route-ui')) return;
                         // Не даємо кліку піднятись до хост-меню на document
@@ -7029,6 +7086,7 @@ function formatCoord(lat, lon, format) {
             } catch (_) { /* ignore */ }
 
             const mo = new MutationObserver((muts) => {
+                if (!isHostLmbBlockEnabled()) return;
                 if (!isFrMapToolActive()) return;
                 for (const m of muts) {
                     m.addedNodes.forEach((n) => {
@@ -7188,6 +7246,12 @@ function formatCoord(lat, lon, format) {
         wireAnalyticsUi();
         wireHotkeys();
         wireHostMenuGuard();
+        document.getElementById('fr-host-lmb')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleHostLmbBlock();
+        });
+        syncHostLmbToggleUi();
         refreshUI();
         renderAnalytics();
         listenToCloudUpdates();
