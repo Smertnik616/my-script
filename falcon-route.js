@@ -820,7 +820,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-44';
+    const FR_BUILD = 'ui-clean-45';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1814,6 +1814,11 @@ function formatCoord(lat, lon, format) {
                             <span class="fr-hot-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="2.6"/><circle cx="12" cy="12" r="6.5" stroke-dasharray="2 2.2"/><path d="M12 3.2v2M12 18.8v2M3.2 12h2M18.8 12h2"/></svg></span>
                             <span class="fr-hot-t">Точка</span>
                         </button>
+                        <button type="button" class="fr-hot" id="fr-q-delete" title="Видалити об'єкти з карти [D]" data-fr-click="fr-ana-delete" data-fr-acc="analytics">
+                            <span class="fr-hot-k">D</span>
+                            <span class="fr-hot-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14"/><path d="M9.5 7V5.8A1.3 1.3 0 0 1 10.8 4.5h2.4A1.3 1.3 0 0 1 14.5 5.8V7"/><path d="M8 7l.7 12.2A1.4 1.4 0 0 0 10.1 20.5h3.8a1.4 1.4 0 0 0 1.4-1.3L16 7"/><path d="M10.2 11v5.5M13.8 11v5.5"/></svg></span>
+                            <span class="fr-hot-t">Видалити</span>
+                        </button>
                     </div>
                     <div class="fr-quick-row">
                         <button type="button" class="fr-mgrs" id="fr-coord-pick" title="Скопіювати координати кліком на карті [Q]">
@@ -1837,7 +1842,6 @@ function formatCoord(lat, lon, format) {
                         <button type="button" id="fr-q-points" data-fr-cmd="toggle-points" data-fr-acc="filters"></button>
                         <button type="button" id="fr-q-note" data-fr-click="fr-ana-note" data-fr-acc="analytics"></button>
                         <button type="button" id="fr-q-ban" data-fr-click="fr-ana-ban" data-fr-acc="analytics"></button>
-                        <button type="button" id="fr-q-delete" data-fr-click="fr-ana-delete" data-fr-acc="analytics"></button>
                     </div>
                 </div>
 
