@@ -33,6 +33,7 @@
     const STORAGE_KEY = 'cesium_falcon_route_points_v1';
     const SETTINGS_KEY = 'cesium_falcon_route_settings_v1';
     const CORRIDOR_KEY = 'cesium_falcon_route_corridor_v1';
+    const ZONES_KEY = 'falcon_route_zones_v1';
     const CLIENT_KEY = 'falcon_route_client_id_v1';
     const MAX_BOOT_ATTEMPTS = 40;
 
@@ -275,7 +276,14 @@
         rulerColor: '#22d3ee',
         callsign: 'Falcon',
         flightColor: '#22d3ee',
-        blockHostLmb: true // блокувати ЛКМ-меню хоста під час інструментів FR
+        blockHostLmb: true, // блокувати ЛКМ-меню хоста під час інструментів FR
+        layerPoints: true,
+        layerTargets: true,
+        layerRoads: true,
+        layerNotes: true,
+        layerBans: true,
+        zoneFilterMode: 'off', // off | inside | outside
+        activeZoneId: ''
     };
 
     function formatDistanceKm(meters) {
@@ -808,6 +816,21 @@ function formatCoord(lat, lon, format) {
         return false;
     }
 
+    /** Ray casting: чи точка всередині полігону [{lat,lon},...] */
+    function pointInPolygon(lat, lon, ring) {
+        if (!Array.isArray(ring) || ring.length < 3) return false;
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            const yi = Number(ring[i].lat), xi = Number(ring[i].lon);
+            const yj = Number(ring[j].lat), xj = Number(ring[j].lon);
+            if (!Number.isFinite(yi) || !Number.isFinite(xi) || !Number.isFinite(yj) || !Number.isFinite(xj)) continue;
+            const intersect = ((yi > lat) !== (yj > lat))
+                && (lon < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    }
+
     function hexToRgbA(hex, alpha) {
         const h = (hex || '#ef4444').replace('#', '');
         const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
@@ -820,7 +843,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ui-clean-45';
+    const FR_BUILD = 'layers-zones-46';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1216,6 +1239,12 @@ function formatCoord(lat, lon, format) {
         let overlayObjects = [];
         let labelOverlays = [];
         let corridorOverlays = [];
+        let zoneStore = [];
+        let zoneOverlays = [];
+        let draftZone = [];
+        let isZoneDrawMode = false;
+        let zoneListener = null;
+        let zoneDbl = null;
         let rulerOverlays = [];
         let aimTarget = null; // { lat, lon } — ціль на карті
         let aimOverlays = [];
@@ -1656,7 +1685,7 @@ function formatCoord(lat, lon, format) {
                 }
                 #falcon-route-ui .fr-hotrow {
                     /* hotkeys row */
-                    display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
+                    display:grid; grid-template-columns:repeat(5,1fr); gap:6px;
                 }
                 #falcon-route-ui .fr-hot {
                     position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -1693,6 +1722,23 @@ function formatCoord(lat, lon, format) {
                 #falcon-route-ui .fr-host-lmb .fr-host-lmb-k { font-size:9px; color:#94a3b8; font-weight:650; }
                 #falcon-route-ui .fr-host-lmb.active .fr-host-lmb-k { color:#fbbf24; }
                 #falcon-route-ui .fr-host-lmb .fr-host-lmb-t { font-size:10px; }
+                #falcon-route-ui .fr-layers {
+                    display:grid; grid-template-columns:repeat(2,1fr); gap:6px; margin:6px 0 8px;
+                }
+                #falcon-route-ui .fr-layer {
+                    display:flex; align-items:center; gap:7px; margin:0; padding:7px 8px;
+                    background:#121826; border:1px solid #243044; border-radius:8px;
+                    font-size:11px; font-weight:650; color:#cbd5e1; cursor:pointer;
+                }
+                #falcon-route-ui .fr-layer input { accent-color:#38bdf8; }
+                #falcon-route-ui .fr-zone-list { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+                #falcon-route-ui .fr-zone-row {
+                    display:grid; grid-template-columns:1fr auto auto; gap:6px; align-items:center;
+                    padding:7px 8px; background:#121826; border:1px solid #243044; border-radius:8px;
+                }
+                #falcon-route-ui .fr-zone-row.active { border-color:#38bdf8; }
+                #falcon-route-ui .fr-zone-name { font-size:12px; font-weight:700; color:#e2e8f0; }
+                #falcon-route-ui .fr-zone-meta { font-size:10px; color:#64748b; }
                 #falcon-route-ui .fr-hub {
                     display:grid !important; grid-template-columns:repeat(3,1fr); gap:6px;
                 }
@@ -1875,7 +1921,7 @@ function formatCoord(lat, lon, format) {
                     <button type="button" class="fr-hub-tile" data-fr-acc="filters">
                         <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16l-6.2 7.2V19l-3.6 2v-8.8L4 5z"/></svg></span>
                         <span class="fr-hub-txt">Фільтри карти</span>
-                        <span class="fr-hub-desc">період, збиття, засіб</span>
+                        <span class="fr-hub-desc">шари · період · райони</span>
                     </button>
                     <button type="button" class="fr-hub-tile" data-fr-acc="coords">
                         <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3"/><path d="M12 8.2l1.4 2.6 2.9.5-2 2.1.4 2.9L12 14.8l-2.7 1.5.4-2.9-2-2.1 2.9-.5L12 8.2z"/></svg></span>
@@ -2041,11 +2087,21 @@ function formatCoord(lat, lon, format) {
                 <details class="fr-acc" data-fr-acc="filters">
                     <summary><span class="fr-acc-title">Фільтри карти</span></summary>
                     <div class="fr-acc-body">
-                        <label class="fr-check"><input type="checkbox" id="fr-show-points" ${settings.showPoints ? 'checked' : ''}> Показувати точки на карті</label>
+                        <div class="fr-hint">Шари — що малювати. Район — показати/сховати обʼєкти по полігону.</div>
+                        <div class="fr-layers">
+                            <label class="fr-layer"><input type="checkbox" id="fr-layer-points" ${settings.layerPoints !== false ? 'checked' : ''}> Збиття</label>
+                            <label class="fr-layer"><input type="checkbox" id="fr-layer-targets" ${settings.layerTargets !== false ? 'checked' : ''}> Цілі</label>
+                            <label class="fr-layer"><input type="checkbox" id="fr-layer-roads" ${settings.layerRoads !== false ? 'checked' : ''}> Дороги</label>
+                            <label class="fr-layer"><input type="checkbox" id="fr-layer-notes" ${settings.layerNotes !== false ? 'checked' : ''}> Мітки</label>
+                            <label class="fr-layer"><input type="checkbox" id="fr-layer-bans" ${settings.layerBans !== false ? 'checked' : ''}> Заборони</label>
+                        </div>
+                        <input type="checkbox" id="fr-show-points" ${settings.showPoints !== false && settings.layerPoints !== false ? 'checked' : ''} style="display:none" aria-hidden="true">
                         <div class="fr-field">
-                            <label for="fr-time-filter">Період</label>
+                            <label for="fr-time-filter">Період (архів)</label>
                             <select id="fr-time-filter">
                                 <option value="all">Усі</option>
+                                <option value="3h">Останні 3 год</option>
+                                <option value="12h">Останні 12 год</option>
                                 <option value="day">Останні 24 год</option>
                                 <option value="week">Останній тиждень</option>
                                 <option value="month">Останній місяць</option>
@@ -2061,6 +2117,20 @@ function formatCoord(lat, lon, format) {
                                 <select id="fr-zasib-filter"></select>
                             </div>
                         </div>
+                        <div class="fr-field">
+                            <label for="fr-zone-mode">Район на карті</label>
+                            <select id="fr-zone-mode">
+                                <option value="off">Без фільтра по району</option>
+                                <option value="inside">Лише всередині району</option>
+                                <option value="outside">Сховати всередині району</option>
+                            </select>
+                        </div>
+                        <div class="fr-grid">
+                            <button type="button" class="fr-btn fr-btn-pick" id="fr-zone-draw">Малювати район</button>
+                            <button type="button" class="fr-btn fr-btn-danger" id="fr-zone-cancel" style="display:none">Скасувати</button>
+                        </div>
+                        <div class="fr-hint" id="fr-zone-hint">Клацай вершини · подвійний клік або «Завершити» — зберегти</div>
+                        <div class="fr-zone-list" id="fr-zone-list"></div>
                         <div class="fr-legend" id="fr-legend"></div>
                     </div>
                 </details>
@@ -2237,12 +2307,20 @@ function formatCoord(lat, lon, format) {
             settings.rulerColor = document.getElementById('fr-ruler-color')?.value || '#22d3ee';
             settings.callsign = (document.getElementById('fr-callsign')?.value || 'Falcon').trim().slice(0, 16) || 'Falcon';
             settings.flightColor = document.getElementById('fr-flight-color')?.value || '#22d3ee';
-            settings.showPoints = document.getElementById('fr-show-points').checked;
+            settings.layerPoints = !!document.getElementById('fr-layer-points')?.checked;
+            settings.layerTargets = !!document.getElementById('fr-layer-targets')?.checked;
+            settings.layerRoads = !!document.getElementById('fr-layer-roads')?.checked;
+            settings.layerNotes = !!document.getElementById('fr-layer-notes')?.checked;
+            settings.layerBans = !!document.getElementById('fr-layer-bans')?.checked;
+            settings.showPoints = settings.layerPoints;
+            const showHidden = document.getElementById('fr-show-points');
+            if (showHidden) showHidden.checked = settings.layerPoints;
             settings.coordFormat = document.getElementById('fr-coord-format').value;
             settings.timeFilter = document.getElementById('fr-time-filter').value;
             settings.meansFilter = document.getElementById('fr-means-filter').value;
             settings.zasibFilter = document.getElementById('fr-zasib-filter').value;
-            // blockHostLmb зберігається окремо в toggleHostLmbBlock
+            settings.zoneFilterMode = document.getElementById('fr-zone-mode')?.value || 'off';
+            // blockHostLmb / activeZoneId зберігаються окремо
             localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
         }
 
@@ -2387,6 +2465,10 @@ function formatCoord(lat, lon, format) {
 
         document.getElementById('fr-coord-format').value = settings.coordFormat;
         document.getElementById('fr-time-filter').value = settings.timeFilter;
+        {
+            const zm = document.getElementById('fr-zone-mode');
+            if (zm) zm.value = settings.zoneFilterMode || 'off';
+        }
         fillCatalogSelects();
 
         function getTimeMode() {
@@ -2395,10 +2477,14 @@ function formatCoord(lat, lon, format) {
 
         function passesTimeFilter(pt, mode = getTimeMode()) {
             if (mode === 'all') return true;
-            const created = resolveCreatedAt(pt);
+            const created = Number.isFinite(Number(pt?.createdAt))
+                ? Number(pt.createdAt)
+                : resolveCreatedAt(pt);
             if (!Number.isFinite(created) || created <= 0) return false;
             const age = Date.now() - created;
             if (age < 0) return false;
+            if (mode === '3h') return age <= 3 * 3600000;
+            if (mode === '12h') return age <= 12 * 3600000;
             if (mode === 'day') return age <= 86400000;
             if (mode === 'week') return age <= 7 * 86400000;
             if (mode === 'month') return age <= 30 * 86400000;
@@ -2410,6 +2496,7 @@ function formatCoord(lat, lon, format) {
         }
 
         function getVisiblePoints() {
+            if (settings.layerPoints === false) return [];
             const meansFilter = document.getElementById('fr-means-filter').value;
             const zasibFilter = document.getElementById('fr-zasib-filter').value;
             const width = parseFloat(document.getElementById('fr-corridor-w').value) || 2000;
@@ -2419,6 +2506,7 @@ function formatCoord(lat, lon, format) {
                 if (meansFilter !== 'all' && pt.means !== meansFilter) return false;
                 if (zasibFilter !== 'all' && pt.zasib !== zasibFilter) return false;
                 if (!pointInCorridor(pt, corridor, width)) return false;
+                if (!passesZoneFilter(pt.lat, pt.lon)) return false;
                 return true;
             });
         }
@@ -3380,6 +3468,296 @@ function formatCoord(lat, lon, format) {
             refreshUI();
         }
 
+        function zonesStorageKey() {
+            const room = activeLicenseMeta?.room || DEFAULT_ROOM;
+            return `${ZONES_KEY}:${room}`;
+        }
+
+        function loadZones() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(zonesStorageKey()) || '[]');
+                zoneStore = Array.isArray(raw)
+                    ? raw.filter((z) => z && Array.isArray(z.path) && z.path.length >= 3)
+                    : [];
+            } catch (_) {
+                zoneStore = [];
+            }
+            if (settings.activeZoneId && !zoneStore.some((z) => z.id === settings.activeZoneId)) {
+                settings.activeZoneId = zoneStore[0]?.id || '';
+            }
+        }
+
+        function persistZones() {
+            try { localStorage.setItem(zonesStorageKey(), JSON.stringify(zoneStore)); } catch (_) { /* ignore */ }
+            try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) { /* ignore */ }
+        }
+
+        function getActiveZone() {
+            const id = settings.activeZoneId;
+            if (!id) return null;
+            return zoneStore.find((z) => z.id === id) || null;
+        }
+
+        function passesZoneFilter(lat, lon) {
+            const mode = document.getElementById('fr-zone-mode')?.value || settings.zoneFilterMode || 'off';
+            if (mode === 'off') return true;
+            const zone = getActiveZone();
+            if (!zone?.path || zone.path.length < 3) return true;
+            const inside = pointInPolygon(lat, lon, zone.path);
+            if (mode === 'inside') return inside;
+            if (mode === 'outside') return !inside;
+            return true;
+        }
+
+        function clearZoneOverlays() {
+            zoneOverlays.forEach((obj) => {
+                try {
+                    if (mapType === 'google') obj.setMap?.(null);
+                    else map.entities.remove(obj);
+                } catch (_) { /* ignore */ }
+            });
+            zoneOverlays = [];
+        }
+
+        function renderZoneList() {
+            const box = document.getElementById('fr-zone-list');
+            if (!box) return;
+            box.innerHTML = '';
+            if (!zoneStore.length) {
+                const empty = document.createElement('div');
+                empty.className = 'fr-hint';
+                empty.textContent = 'Районів ще немає — намалюй полігон на карті';
+                box.appendChild(empty);
+                return;
+            }
+            zoneStore.forEach((z) => {
+                const row = document.createElement('div');
+                row.className = 'fr-zone-row' + (z.id === settings.activeZoneId ? ' active' : '');
+                const info = document.createElement('div');
+                info.innerHTML = '<div class="fr-zone-name"></div><div class="fr-zone-meta"></div>';
+                info.querySelector('.fr-zone-name').textContent = z.name || 'Район';
+                info.querySelector('.fr-zone-meta').textContent = `${z.path.length} вершин`;
+                const useBtn = document.createElement('button');
+                useBtn.type = 'button';
+                useBtn.className = 'fr-btn';
+                useBtn.textContent = z.id === settings.activeZoneId ? '✓' : 'Обрат.';
+                useBtn.title = 'Зробити активним для фільтра';
+                useBtn.onclick = () => {
+                    settings.activeZoneId = z.id;
+                    persistZones();
+                    onFilterChange();
+                };
+                const delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'fr-btn fr-btn-danger';
+                delBtn.textContent = '✕';
+                delBtn.title = 'Видалити район';
+                delBtn.onclick = () => {
+                    zoneStore = zoneStore.filter((x) => x.id !== z.id);
+                    if (settings.activeZoneId === z.id) settings.activeZoneId = zoneStore[0]?.id || '';
+                    persistZones();
+                    onFilterChange();
+                };
+                row.appendChild(info);
+                row.appendChild(useBtn);
+                row.appendChild(delBtn);
+                box.appendChild(row);
+            });
+        }
+
+        function renderZones() {
+            clearZoneOverlays();
+            const activeId = settings.activeZoneId;
+            zoneStore.forEach((z) => {
+                if (!z?.path || z.path.length < 2) return;
+                const isActive = z.id === activeId;
+                const color = z.color || (isActive ? '#38bdf8' : '#64748b');
+                const opacity = isActive ? 0.22 : 0.10;
+                if (mapType === 'google') {
+                    const poly = new google.maps.Polygon({
+                        map,
+                        paths: z.path.map((p) => ({ lat: p.lat, lng: p.lon })),
+                        strokeColor: color,
+                        strokeOpacity: isActive ? 0.95 : 0.55,
+                        strokeWeight: isActive ? 2.5 : 1.5,
+                        fillColor: color,
+                        fillOpacity: opacity,
+                        clickable: false,
+                        zIndex: 30
+                    });
+                    markOwnOverlay(poly);
+                    zoneOverlays.push(poly);
+                } else {
+                    zoneOverlays.push(map.entities.add({
+                        polygon: {
+                            hierarchy: z.path.map((p) => Cesium.Cartesian3.fromDegrees(p.lon, p.lat)),
+                            material: toCesiumColor(color, opacity),
+                            outline: true,
+                            outlineColor: toCesiumColor(color, isActive ? 0.95 : 0.55),
+                            height: 0
+                        }
+                    }));
+                }
+            });
+            if (isZoneDrawMode && draftZone.length) {
+                if (mapType === 'google') {
+                    if (draftZone.length >= 2) {
+                        const line = new google.maps.Polyline({
+                            map,
+                            path: draftZone.map((p) => ({ lat: p.lat, lng: p.lon })),
+                            strokeColor: '#38bdf8',
+                            strokeOpacity: 0.95,
+                            strokeWeight: 2,
+                            zIndex: 40
+                        });
+                        markOwnOverlay(line);
+                        zoneOverlays.push(line);
+                    }
+                    draftZone.forEach((p) => {
+                        const m = new google.maps.Marker({
+                            map,
+                            position: { lat: p.lat, lng: p.lon },
+                            icon: {
+                                path: google.maps.SymbolPath.CIRCLE,
+                                scale: 4,
+                                fillColor: '#38bdf8',
+                                fillOpacity: 1,
+                                strokeColor: '#fff',
+                                strokeWeight: 1
+                            },
+                            zIndex: 45
+                        });
+                        markOwnOverlay(m);
+                        zoneOverlays.push(m);
+                    });
+                } else {
+                    if (draftZone.length >= 2) {
+                        zoneOverlays.push(map.entities.add({
+                            polyline: {
+                                positions: draftZone.map((p) => Cesium.Cartesian3.fromDegrees(p.lon, p.lat)),
+                                width: 3,
+                                material: toCesiumColor('#38bdf8', 0.95),
+                                clampToGround: true
+                            }
+                        }));
+                    }
+                    draftZone.forEach((p) => {
+                        zoneOverlays.push(map.entities.add({
+                            position: Cesium.Cartesian3.fromDegrees(p.lon, p.lat),
+                            point: {
+                                pixelSize: 8,
+                                color: toCesiumColor('#38bdf8'),
+                                outlineColor: toCesiumColor('#ffffff'),
+                                outlineWidth: 1,
+                                disableDepthTestDistance: Number.POSITIVE_INFINITY
+                            }
+                        }));
+                    });
+                }
+            }
+            renderZoneList();
+        }
+
+        function stopZoneDrawMode(commit) {
+            if (zoneListener) {
+                try {
+                    if (mapType === 'google') {
+                        google.maps.event.removeListener(zoneListener);
+                        if (zoneDbl) google.maps.event.removeListener(zoneDbl);
+                    } else if (map.canvas) {
+                        map.canvas.removeEventListener('click', zoneListener);
+                    }
+                } catch (_) { /* ignore */ }
+                zoneListener = null;
+                zoneDbl = null;
+            }
+            isZoneDrawMode = false;
+            const drawBtn = document.getElementById('fr-zone-draw');
+            const cancelBtn = document.getElementById('fr-zone-cancel');
+            if (drawBtn) {
+                drawBtn.classList.remove('active');
+                drawBtn.textContent = 'Малювати район';
+            }
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            if (commit && draftZone.length >= 3) {
+                const name = (prompt('Назва району', `Район ${zoneStore.length + 1}`) || '').trim().slice(0, 40)
+                    || `Район ${zoneStore.length + 1}`;
+                const item = {
+                    id: 'z_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+                    name,
+                    path: draftZone.slice(),
+                    color: '#38bdf8',
+                    createdAt: Date.now()
+                };
+                zoneStore.push(item);
+                settings.activeZoneId = item.id;
+                const zm = document.getElementById('fr-zone-mode');
+                if (zm && zm.value === 'off') {
+                    zm.value = 'inside';
+                    settings.zoneFilterMode = 'inside';
+                }
+                persistZones();
+            }
+            draftZone = [];
+            renderZones();
+            if (commit) onFilterChange();
+            syncQuickBar();
+        }
+
+        function beginZoneDrawMode() {
+            if (isZoneDrawMode) {
+                stopZoneDrawMode(true);
+                return;
+            }
+            try { if (isRulerMode) stopRulerMode(); } catch (_) {}
+            try { if (isPickMode) stopPickMode(); } catch (_) {}
+            try { if (isCoordPickMode) stopCoordPickMode(); } catch (_) {}
+            try { if (isCorridorMode) stopCorridorMode(false); } catch (_) {}
+            try { stopAnalyticsModes?.(); } catch (_) {}
+            isZoneDrawMode = true;
+            draftZone = [];
+            const drawBtn = document.getElementById('fr-zone-draw');
+            const cancelBtn = document.getElementById('fr-zone-cancel');
+            if (drawBtn) {
+                drawBtn.classList.add('active');
+                drawBtn.textContent = '✓ Завершити';
+            }
+            if (cancelBtn) cancelBtn.style.display = '';
+            const addPt = (lat, lon) => {
+                draftZone.push({ lat, lon });
+                renderZones();
+            };
+            if (mapType === 'google') {
+                zoneListener = map.addListener('click', (e) => {
+                    if (!e?.latLng) return;
+                    addPt(e.latLng.lat(), e.latLng.lng());
+                });
+                zoneDbl = map.addListener('dblclick', (e) => {
+                    try { e?.stop?.(); } catch (_) {}
+                    if (e?.latLng) addPt(e.latLng.lat(), e.latLng.lng());
+                    stopZoneDrawMode(true);
+                });
+            } else if (map.canvas) {
+                zoneListener = (e) => {
+                    try {
+                        const rect = map.canvas.getBoundingClientRect();
+                        const clickPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                        const cartesian = map.camera.pickEllipsoid(clickPos, map.scene.globe.ellipsoid);
+                        if (!cartesian) return;
+                        const cartographic = map.scene.globe.ellipsoid.cartesianToCartographic(cartesian);
+                        addPt(
+                            cartographic.latitude * 57.29577951308232,
+                            cartographic.longitude * 57.29577951308232
+                        );
+                    } catch (_) { /* ignore */ }
+                };
+                map.canvas.addEventListener('click', zoneListener);
+            }
+            renderZones();
+            syncQuickBar();
+        }
+
+
         async function copyText(text, btn, okLabel) {
             let ok = false;
             try {
@@ -3622,6 +4000,8 @@ function formatCoord(lat, lon, format) {
         function onFilterChange() {
             saveSettings();
             refreshUI();
+            renderAnalytics();
+            renderZones();
             syncQuickBar();
         }
 
@@ -3629,8 +4009,11 @@ function formatCoord(lat, lon, format) {
         showPointsEl.addEventListener('change', onFilterChange);
         showPointsEl.addEventListener('input', onFilterChange);
 
-        ['fr-time-filter', 'fr-means-filter', 'fr-zasib-filter'].forEach(id => {
+        ['fr-time-filter', 'fr-means-filter', 'fr-zasib-filter', 'fr-zone-mode',
+            'fr-layer-points', 'fr-layer-targets', 'fr-layer-roads', 'fr-layer-notes', 'fr-layer-bans'
+        ].forEach(id => {
             const el = document.getElementById(id);
+            if (!el) return;
             el.addEventListener('change', onFilterChange);
             el.addEventListener('input', onFilterChange);
         });
@@ -3824,6 +4207,7 @@ function formatCoord(lat, lon, format) {
             if (isCoordPickMode) stopCoordPickMode();
             if (isRulerMode) stopRulerMode();
             if (isAimPlaceMode) stopAimPlaceMode();
+            if (isZoneDrawMode) stopZoneDrawMode(false);
             stopAnalyticsModes();
             stopAircraftModes();
 
@@ -4175,10 +4559,12 @@ function formatCoord(lat, lon, format) {
                 }
             });
             const pointsBtn = document.getElementById('fr-q-points');
+            const layerPts = document.getElementById('fr-layer-points');
             const showCb = document.getElementById('fr-show-points');
-            if (pointsBtn && showCb) {
-                pointsBtn.classList.toggle('active', !showCb.checked);
-                pointsBtn.title = showCb.checked ? 'Сховати точки' : 'Показати точки';
+            if (pointsBtn) {
+                const on = layerPts ? !!layerPts.checked : !!showCb?.checked;
+                pointsBtn.classList.toggle('active', !on);
+                pointsBtn.title = on ? 'Сховати збиття' : 'Показати збиття';
             }
             const fly = document.getElementById('fr-q-fly');
             if (fly) fly.title = myFlight?.cruise ? 'Стоп польоту' : 'Летіти за курсом';
@@ -4193,8 +4579,8 @@ function formatCoord(lat, lon, format) {
             const qRoad = document.getElementById('fr-q-road');
             if (qRoad) qRoad.classList.toggle('active', isAnaRoadMode);
             const eye = document.getElementById('fr-dock-eye');
-            const showCb2 = document.getElementById('fr-show-points');
-            if (eye && showCb2) eye.classList.toggle('active', !!showCb2.checked);
+            const layerPts2 = document.getElementById('fr-layer-points');
+            if (eye && layerPts2) eye.classList.toggle('active', !!layerPts2.checked);
             const qNote = document.getElementById('fr-q-note');
             if (qNote) qNote.classList.toggle('active', isAnaNoteMode);
             const qBan = document.getElementById('fr-q-ban');
@@ -4229,7 +4615,7 @@ function formatCoord(lat, lon, format) {
                 if (acc && targetPreview !== 'fr-coord-pick') openAccSection(acc);
                 const cmd = btn.getAttribute('data-fr-cmd');
                 if (cmd === 'toggle-points') {
-                    const cb = document.getElementById('fr-show-points');
+                    const cb = document.getElementById('fr-layer-points') || document.getElementById('fr-show-points');
                     if (cb) {
                         cb.checked = !cb.checked;
                         cb.dispatchEvent(new Event('change', { bubbles: true }));
@@ -5961,10 +6347,18 @@ function formatCoord(lat, lon, format) {
 
         function renderAnalytics() {
             clearAllAnalyticsOverlays();
+            const timeMode = getTimeMode();
+            const showTargets = settings.layerTargets !== false;
+            const showRoads = settings.layerRoads !== false;
+            const showNotes = settings.layerNotes !== false;
+            const showBans = settings.layerBans !== false;
             const targets = analyticsStore.targets || {};
             Object.keys(targets).forEach((id) => {
                 const t = targets[id];
+                if (!showTargets) return;
                 if (!t || !Number.isFinite(t.lat) || !Number.isFinite(t.lon)) return;
+                if (!passesTimeFilter(t, timeMode)) return;
+                if (!passesZoneFilter(t.lat, t.lon)) return;
                 const color = t.color || '#fbbf24';
                 const parts = [];
                 if (mapType === 'google') {
@@ -6016,9 +6410,12 @@ function formatCoord(lat, lon, format) {
 
             const roads = analyticsStore.roads || {};
             Object.keys(roads).forEach((id) => {
+                if (!showRoads) return;
                 const road = roads[id];
+                if (!passesTimeFilter(road, timeMode)) return;
                 const path = Array.isArray(road?.path) ? road.path : [];
                 if (path.length < 2) return;
+                if (!path.some((p) => passesZoneFilter(p.lat, p.lon))) return;
                 const color = road.color || '#fbbf24';
                 const opacity = Number.isFinite(road.opacity) ? road.opacity : 0.4;
                 const parts = [];
@@ -6057,6 +6454,9 @@ function formatCoord(lat, lon, format) {
                 const n = notes[id];
                 if (!n || !Number.isFinite(n.lat) || !Number.isFinite(n.lon)) return;
                 const isBan = n.type === 'ban' || n.kind === 'ban';
+                if (isBan ? !showBans : !showNotes) return;
+                if (!passesTimeFilter(n, timeMode)) return;
+                if (!passesZoneFilter(n.lat, n.lon)) return;
                 const color = n.color || (isBan ? '#dc2626' : '#38bdf8');
                 const iconUrl = isBan ? analyticsBanIcon() : analyticsNoteIcon(color);
                 const iconSize = isBan ? 40 : 28;
@@ -6964,7 +7364,8 @@ function formatCoord(lat, lon, format) {
                 isAnaBanMode ||
                 isPlaceAircraftMode ||
                 isFlyToMode ||
-                isAttachPickMode
+                isAttachPickMode ||
+                isZoneDrawMode
             );
         }
 
@@ -7247,12 +7648,17 @@ function formatCoord(lat, lon, format) {
             };
         }
 
+        document.getElementById('fr-zone-draw')?.addEventListener('click', () => beginZoneDrawMode());
+        document.getElementById('fr-zone-cancel')?.addEventListener('click', () => stopZoneDrawMode(false));
+        loadZones();
+
         wireAnalyticsUi();
         wireHotkeys();
         wireHostMenuGuard();
         syncHostLmbToggleUi();
         refreshUI();
         renderAnalytics();
+        renderZones();
         listenToCloudUpdates();
         listenToFlights();
         listenToAnalytics();
