@@ -843,7 +843,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'mgrs-default-51';
+    const FR_BUILD = 'host-lmb-restore-52';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -7387,14 +7387,46 @@ function formatCoord(lat, lon, format) {
                 btn.classList.toggle('active', on);
                 btn.setAttribute('aria-pressed', on ? 'true' : 'false');
                 btn.title = on
-                    ? 'Блок УВІМКНЕНО: під час інструментів FR меню хоста глушиться. Клацни — ВИМКНУТИ блок.'
-                    : 'Блок ВИМКНЕНО: меню хоста на ЛКМ доступне. Клацни — УВІМКНУТИ блок під час інструментів.';
+                    ? 'Блок УВІМКНЕНО: під час інструментів FR меню хоста глушиться. Клацни — дозволити меню.'
+                    : 'Блок ВИМКНЕНО: меню хоста на ЛКМ доступне. Клацни — блокувати під час інструментів.';
             }
             if (st) st.textContent = on ? 'блок' : 'дозв.';
         }
 
+        function restoreSuppressedHostMenus() {
+            const list = window.__frHostMenuSuppressedList || [];
+            list.forEach((el) => {
+                try {
+                    if (!el || !el.isConnected) return;
+                    // знімаємо наші !important-стилі — хост знову може показати меню
+                    el.style.removeProperty('display');
+                    el.style.removeProperty('visibility');
+                    el.style.removeProperty('pointer-events');
+                    el.removeAttribute('hidden');
+                    delete el.__frHostMenuSuppressed;
+                } catch (_) { /* ignore */ }
+            });
+            window.__frHostMenuSuppressedList = [];
+        }
+
+        function suppressHostMenuEl(el) {
+            if (!el || el.nodeType !== 1 || el.__frHostMenuSuppressed) return false;
+            if (el.id === 'falcon-route-ui' || el.closest?.('#falcon-route-ui')) return false;
+            if (el === document.body || el === document.documentElement) return false;
+            try {
+                el.__frHostMenuSuppressed = true;
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('visibility', 'hidden', 'important');
+                el.style.setProperty('pointer-events', 'none', 'important');
+                window.__frHostMenuSuppressedList = window.__frHostMenuSuppressedList || [];
+                window.__frHostMenuSuppressedList.push(el);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+
         function toggleHostLmbBlock() {
-            // захист від подвійного спрацювання (два слухачі / dblclick)
             const now = Date.now();
             if (toggleHostLmbBlock.__lockUntil && now < toggleHostLmbBlock.__lockUntil) return;
             toggleHostLmbBlock.__lockUntil = now + 400;
@@ -7403,22 +7435,18 @@ function formatCoord(lat, lon, format) {
             settings.blockHostLmb = next;
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) { /* ignore */ }
 
-            // скасувати відкладені kill після вимкнення
             window.__frHostMenuKillGen = (window.__frHostMenuKillGen || 0) + 1;
-
             syncHostLmbToggleUi();
             try { syncQuickBar(); } catch (_) { /* ignore */ }
 
-            if (next && isFrMapToolActive()) {
-                scheduleKillHostCoordMenus(true);
-            }
+            // Головне: при «дозв.» повністю зняти перехоплення і повернути сховані меню
+            applyHostLmbBlockRuntime();
             console.log('[FALCONROUTE] host LMB block =', next);
         }
 
         function wireHostLmbButton() {
             const btn = document.getElementById('fr-host-lmb');
             if (!btn) return;
-            // один capture-слухач на кнопці — без подвійного toggle через quickbar
             if (btn.__frHostLmbClick) {
                 try { btn.removeEventListener('click', btn.__frHostLmbClick, true); } catch (_) { /* ignore */ }
             }
@@ -7436,7 +7464,7 @@ function formatCoord(lat, lon, format) {
             if (!el || el.nodeType !== 1) return false;
             if (el.id === 'falcon-route-ui' || el.closest?.('#falcon-route-ui')) return false;
             if (el === document.body || el === document.documentElement) return false;
-            if (el.childElementCount > 100) return false;
+            if (el.childElementCount > 60) return false;
             try {
                 const st = window.getComputedStyle?.(el);
                 if (st && (st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0')) return false;
@@ -7455,29 +7483,22 @@ function formatCoord(lat, lon, format) {
         function killHostCoordMenus(root) {
             const tryKill = (el) => {
                 if (!isHostCoordMenuEl(el)) return false;
-                try { el.remove(); return true; } catch (_) {
-                    try {
-                        el.style.setProperty('display', 'none', 'important');
-                        el.style.setProperty('visibility', 'hidden', 'important');
-                        el.style.setProperty('pointer-events', 'none', 'important');
-                        el.setAttribute('hidden', 'true');
-                        return true;
-                    } catch (__) { return false; }
-                }
+                // НЕ remove() батьківські контейнери хоста — лише ховаємо (відновимо на «дозв.»)
+                return suppressHostMenuEl(el);
             };
             if (root && root.nodeType === 1) {
                 tryKill(root);
                 try {
                     let p = root.parentElement;
-                    for (let i = 0; p && i < 6; i++, p = p.parentElement) {
+                    for (let i = 0; p && i < 4; i++, p = p.parentElement) {
                         if (tryKill(p)) break;
                     }
                 } catch (_) { /* ignore */ }
-                try { root.querySelectorAll?.('div, ul, menu, section, aside, nav, span, li').forEach(tryKill); } catch (_) { /* ignore */ }
+                try { root.querySelectorAll?.('div, ul, menu, section, aside, nav').forEach(tryKill); } catch (_) { /* ignore */ }
             }
             try {
-                document.querySelectorAll('div, ul, menu, section, aside, nav').forEach((el) => {
-                    if (el.childElementCount > 80) return;
+                document.querySelectorAll('div, ul, menu, section, aside').forEach((el) => {
+                    if (el.childElementCount > 40) return;
                     tryKill(el);
                 });
             } catch (_) { /* ignore */ }
@@ -7494,10 +7515,10 @@ function formatCoord(lat, lon, format) {
             };
             run();
             try { requestAnimationFrame(run); } catch (_) { /* ignore */ }
-            const delays = force
-                ? [0, 10, 30, 60, 100, 160, 250, 400, 600, 900, 1200]
-                : [0, 16, 40, 80, 120, 200, 350, 500, 800];
-            delays.forEach((ms) => setTimeout(run, ms));
+            (force
+                ? [0, 10, 30, 60, 100, 160, 250, 400, 600]
+                : [0, 16, 40, 80, 120, 200, 350, 500]
+            ).forEach((ms) => setTimeout(run, ms));
         }
 
         function getMapRootForHostGuard() {
@@ -7511,29 +7532,41 @@ function formatCoord(lat, lon, format) {
             }
         }
 
-        function wireHostMenuGuard() {
+        function teardownHostMenuBlockers() {
             try {
                 if (window.__frHostMenuPtrHandler) {
                     ['mousedown', 'mouseup', 'click', 'auxclick', 'contextmenu', 'pointerdown', 'pointerup'].forEach((ev) => {
                         window.removeEventListener(ev, window.__frHostMenuPtrHandler, true);
                         document.removeEventListener(ev, window.__frHostMenuPtrHandler, true);
                     });
+                    window.__frHostMenuPtrHandler = null;
                 }
                 if (window.__frHostMenuObserver) {
                     window.__frHostMenuObserver.disconnect();
                     window.__frHostMenuObserver = null;
                 }
-                if (window.__frHostMenuMapRoot && window.__frHostMenuBubbleStop) {
+                const roots = new Set();
+                if (window.__frHostMenuMapRoot) roots.add(window.__frHostMenuMapRoot);
+                try { document.querySelectorAll('.gm-style, .cesium-viewer').forEach((n) => roots.add(n)); } catch (_) {}
+                roots.forEach((mapRoot) => {
+                    const fn = mapRoot.__frHostMenuBubbleStop || window.__frHostMenuBubbleStop;
+                    if (!fn) return;
                     ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup'].forEach((ev) => {
-                        try { window.__frHostMenuMapRoot.removeEventListener(ev, window.__frHostMenuBubbleStop, false); } catch (_) {}
-                        try { window.__frHostMenuMapRoot.removeEventListener(ev, window.__frHostMenuBubbleStop, true); } catch (_) {}
+                        try { mapRoot.removeEventListener(ev, fn, false); } catch (_) {}
+                        try { mapRoot.removeEventListener(ev, fn, true); } catch (_) {}
                     });
-                }
+                    try { delete mapRoot.__frHostMenuBubbleStop; } catch (_) {}
+                });
+                window.__frHostMenuBubbleStop = null;
+                window.__frHostMenuMapRoot = null;
             } catch (_) { /* ignore */ }
+            restoreSuppressedHostMenus();
+            window.__frHostMenuKillGen = (window.__frHostMenuKillGen || 0) + 1;
+        }
 
-            wireHostLmbButton();
+        function setupHostMenuBlockers() {
+            teardownHostMenuBlockers(); // спочатку чисто
 
-            // «блок» = глушити лише під час інструментів FR; «дозв.» = ніколи
             const shouldBlock = () => isHostLmbBlockEnabled() && isFrMapToolActive();
 
             const onPtr = (e) => {
@@ -7594,8 +7627,23 @@ function formatCoord(lat, lon, format) {
                 });
                 window.__frHostMenuObserver = mo;
             } catch (_) { /* ignore */ }
-            window.__frHostMenuGuardWired = true;
+
             if (shouldBlock()) scheduleKillHostCoordMenus(true);
+        }
+
+        /** Увімкнути/вимкнути перехоплення згідно з кнопкою */
+        function applyHostLmbBlockRuntime() {
+            if (isHostLmbBlockEnabled()) {
+                setupHostMenuBlockers();
+            } else {
+                teardownHostMenuBlockers();
+            }
+        }
+
+        function wireHostMenuGuard() {
+            wireHostLmbButton();
+            applyHostLmbBlockRuntime();
+            window.__frHostMenuGuardWired = true;
         }
 
         function wireHotkeys() {
