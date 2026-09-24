@@ -843,7 +843,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'boot-points-lmb-49';
+    const FR_BUILD = 'host-lmb-toggle-50';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1223,6 +1223,8 @@ function formatCoord(lat, lon, format) {
         // Кожен запуск: старі точки збиття вимкнені (користувач увімкне сам у Фільтрах)
         settings.layerPoints = false;
         settings.showPoints = false;
+        // явний boolean для кнопки Хост ЛКМ (старі сейви без поля → увімкнено)
+        settings.blockHostLmb = settings.blockHostLmb !== false;
 
         let poiStore = (JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') || []).map(normalizePoint);
         let timestampsRepaired = false;
@@ -4628,7 +4630,7 @@ function formatCoord(lat, lon, format) {
                     return;
                 }
                 if (cmd === 'toggle-host-lmb') {
-                    toggleHostLmbBlock();
+                    // обробляє wireHostLmbButton (capture) — тут лише зупиняємо bubbling
                     return;
                 }
                 const targetId = btn.getAttribute('data-fr-click');
@@ -7374,7 +7376,7 @@ function formatCoord(lat, lon, format) {
         }
 
         function isHostLmbBlockEnabled() {
-            return settings.blockHostLmb !== false;
+            return settings.blockHostLmb === true;
         }
 
         function syncHostLmbToggleUi() {
@@ -7383,22 +7385,51 @@ function formatCoord(lat, lon, format) {
             const on = isHostLmbBlockEnabled();
             if (btn) {
                 btn.classList.toggle('active', on);
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
                 btn.title = on
-                    ? 'Блок УВІМКНЕНО: під час лінійки/Q/цілі тощо меню хоста глушиться. Клацни — дозволити завжди.'
-                    : 'Блок ВИМКНЕНО: меню хоста на ЛКМ завжди доступне. Клацни — блокувати під час інструментів.';
+                    ? 'Блок УВІМКНЕНО: під час інструментів FR меню хоста глушиться. Клацни — ВИМКНУТИ блок.'
+                    : 'Блок ВИМКНЕНО: меню хоста на ЛКМ доступне. Клацни — УВІМКНУТИ блок під час інструментів.';
             }
             if (st) st.textContent = on ? 'блок' : 'дозв.';
         }
 
         function toggleHostLmbBlock() {
-            settings.blockHostLmb = !isHostLmbBlockEnabled();
+            // захист від подвійного спрацювання (два слухачі / dblclick)
+            const now = Date.now();
+            if (toggleHostLmbBlock.__lockUntil && now < toggleHostLmbBlock.__lockUntil) return;
+            toggleHostLmbBlock.__lockUntil = now + 400;
+
+            const next = !isHostLmbBlockEnabled();
+            settings.blockHostLmb = next;
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) { /* ignore */ }
+
+            // скасувати відкладені kill після вимкнення
+            window.__frHostMenuKillGen = (window.__frHostMenuKillGen || 0) + 1;
+
             syncHostLmbToggleUi();
             try { syncQuickBar(); } catch (_) { /* ignore */ }
-            // якщо блок увімкнули під час активного інструмента — одразу прибрати меню
-            if (isHostLmbBlockEnabled() && isFrMapToolActive()) {
+
+            if (next && isFrMapToolActive()) {
                 scheduleKillHostCoordMenus(true);
             }
+            console.log('[FALCONROUTE] host LMB block =', next);
+        }
+
+        function wireHostLmbButton() {
+            const btn = document.getElementById('fr-host-lmb');
+            if (!btn) return;
+            // один capture-слухач на кнопці — без подвійного toggle через quickbar
+            if (btn.__frHostLmbClick) {
+                try { btn.removeEventListener('click', btn.__frHostLmbClick, true); } catch (_) { /* ignore */ }
+            }
+            const onBtn = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                try { e.stopImmediatePropagation(); } catch (_) { /* ignore */ }
+                toggleHostLmbBlock();
+            };
+            btn.__frHostLmbClick = onBtn;
+            btn.addEventListener('click', onBtn, true);
         }
 
         function isHostCoordMenuEl(el) {
@@ -7412,13 +7443,11 @@ function formatCoord(lat, lon, format) {
             } catch (_) { /* ignore */ }
             const txt = String(el.textContent || '').replace(/\s+/g, ' ').trim();
             if (txt.length < 10 || txt.length > 2000) return false;
-            // Маркери рідного ЛКМ-меню хоста (ua)
             const hasSend = /відправити\s+вибран/i.test(txt) || /вибран[іиi]\s+координат/i.test(txt);
             const hasTarget = /встановити\s+ціль/i.test(txt) || /прибрати\s+ціль/i.test(txt) || /поставити\s+ціль/i.test(txt);
             const hasSearch = /пошук\s+за\s+координат/i.test(txt) || /пошук\s+координат/i.test(txt);
             if (hasSend) return true;
             if (hasTarget && hasSearch) return true;
-            // коротке меню лише з 2 пунктами
             if (hasTarget && /координат/i.test(txt)) return true;
             return false;
         }
@@ -7454,18 +7483,21 @@ function formatCoord(lat, lon, format) {
             } catch (_) { /* ignore */ }
         }
 
-        /** force=true — ігнорувати короткий debounce, завжди чистити якщо блок увімкнено */
         function scheduleKillHostCoordMenus(force) {
             if (!isHostLmbBlockEnabled()) return;
             if (!isFrMapToolActive()) return;
-            killHostCoordMenus();
-            try { requestAnimationFrame(() => killHostCoordMenus()); } catch (_) { /* ignore */ }
+            const gen = window.__frHostMenuKillGen || 0;
+            const run = () => {
+                if (gen !== (window.__frHostMenuKillGen || 0)) return;
+                if (!isHostLmbBlockEnabled() || !isFrMapToolActive()) return;
+                killHostCoordMenus();
+            };
+            run();
+            try { requestAnimationFrame(run); } catch (_) { /* ignore */ }
             const delays = force
                 ? [0, 10, 30, 60, 100, 160, 250, 400, 600, 900, 1200]
                 : [0, 16, 40, 80, 120, 200, 350, 500, 800];
-            delays.forEach((ms) => setTimeout(() => {
-                if (isHostLmbBlockEnabled()) killHostCoordMenus();
-            }, ms));
+            delays.forEach((ms) => setTimeout(run, ms));
         }
 
         function getMapRootForHostGuard() {
@@ -7499,17 +7531,17 @@ function formatCoord(lat, lon, format) {
                 }
             } catch (_) { /* ignore */ }
 
-            // Кнопка «блок» = глушити меню хоста ЛИШЕ під час інструментів FR; «дозв.» = ніколи не глушити
+            wireHostLmbButton();
+
+            // «блок» = глушити лише під час інструментів FR; «дозв.» = ніколи
             const shouldBlock = () => isHostLmbBlockEnabled() && isFrMapToolActive();
 
-            // Capture на window: якщо блок УВІМКНЕНО — гасимо меню (кнопка керує цим)
             const onPtr = (e) => {
                 if (!shouldBlock()) return;
                 if (e.target?.closest?.('#falcon-route-ui')) return;
                 if (e.type !== 'contextmenu') {
                     if (e.button != null && e.button !== 0) return;
                 } else {
-                    // ПКМ хоста також глушимо під час блоку, щоб не мішало
                     e.preventDefault();
                     e.stopPropagation();
                 }
@@ -7520,7 +7552,6 @@ function formatCoord(lat, lon, format) {
                 window.addEventListener(ev, onPtr, true);
             });
 
-            // На корені карти: stopPropagation у bubble, щоб document-слухач хоста не відкрив меню
             try {
                 const mapRoot = getMapRootForHostGuard();
                 if (mapRoot) {
@@ -7528,7 +7559,6 @@ function formatCoord(lat, lon, format) {
                         if (!shouldBlock()) return;
                         if (e.target?.closest?.('#falcon-route-ui')) return;
                         if (e.button != null && e.button !== 0) return;
-                        // ріжемо шлях до хоста, кліки карти (google/cesium) уже оброблені на target
                         e.stopPropagation();
                         scheduleKillHostCoordMenus(true);
                     };
@@ -7541,7 +7571,6 @@ function formatCoord(lat, lon, format) {
                 }
             } catch (_) { /* ignore */ }
 
-            // Якщо меню все ж з’явилось — знімаємо з DOM, поки блок увімкнено
             const mo = new MutationObserver((muts) => {
                 if (!shouldBlock()) return;
                 let hit = false;
@@ -7566,8 +7595,6 @@ function formatCoord(lat, lon, format) {
                 window.__frHostMenuObserver = mo;
             } catch (_) { /* ignore */ }
             window.__frHostMenuGuardWired = true;
-
-            // якщо блок уже увімкнений при старті — прибрати висяче меню
             if (shouldBlock()) scheduleKillHostCoordMenus(true);
         }
 
