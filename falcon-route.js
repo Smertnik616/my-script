@@ -265,7 +265,7 @@
         means: DEFAULT_ZBYTTYA.map(m => ({ ...m })), // збиття (ключ means для сумісності)
         zasibs: DEFAULT_ZASIB.map(m => ({ ...m })),
         showPoints: false,
-        coordFormat: 'dd',
+        coordFormat: 'mgrs',
         timeFilter: 'all',
         meansFilter: 'all',
         zasibFilter: 'all',
@@ -843,7 +843,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'host-lmb-toggle-50';
+    const FR_BUILD = 'mgrs-default-51';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
