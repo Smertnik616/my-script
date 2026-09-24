@@ -276,7 +276,7 @@
         rulerColor: '#22d3ee',
         callsign: 'Falcon',
         flightColor: '#22d3ee',
-        blockHostLmb: true, // блокувати ЛКМ-меню хоста під час інструментів FR
+        blockHostLmb: true, // блокувати ЛКМ-меню хоста (кнопка Хост ЛКМ)
         layerPoints: true,
         layerTargets: true,
         layerRoads: true,
@@ -843,7 +843,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'host-lmb-47';
+    const FR_BUILD = 'host-lmb-48';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1873,7 +1873,7 @@ function formatCoord(lat, lon, format) {
                             <span class="fr-hot-k" style="position:static;margin-left:4px">Q</span>
                         </button>
                         <button type="button" class="fr-host-lmb active" id="fr-host-lmb" data-fr-cmd="toggle-host-lmb"
-                            title="Блок ЛКМ-меню хоста під час інструментів (увімкнено). Клацни — дозволити меню хоста.">
+                            title="Блок УВІМКНЕНО: ЛКМ-меню хоста глушиться. Клацни — дозволити.">
                             <span class="fr-host-lmb-t">Хост ЛКМ</span>
                             <span class="fr-host-lmb-k" id="fr-host-lmb-state">блок</span>
                         </button>
@@ -7380,8 +7380,8 @@ function formatCoord(lat, lon, format) {
             if (btn) {
                 btn.classList.toggle('active', on);
                 btn.title = on
-                    ? 'Блок ЛКМ-меню хоста УВІМКНЕНО (під час інструментів FR). Клацни — дозволити меню хоста.'
-                    : 'Блок ЛКМ-меню хоста ВИМКНЕНО — меню хоста на ЛКМ доступне. Клацни — знову блокувати.';
+                    ? 'Блок УВІМКНЕНО: ЛКМ-меню хоста на карті глушиться. Клацни — дозволити.'
+                    : 'Блок ВИМКНЕНО: ЛКМ-меню хоста працює як звичайно. Клацни — блокувати.';
             }
             if (st) st.textContent = on ? 'блок' : 'дозв.';
         }
@@ -7390,28 +7390,33 @@ function formatCoord(lat, lon, format) {
             settings.blockHostLmb = !isHostLmbBlockEnabled();
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) { /* ignore */ }
             syncHostLmbToggleUi();
-            syncQuickBar();
-            if (isHostLmbBlockEnabled() && isFrMapToolActive()) scheduleKillHostCoordMenus();
+            try { syncQuickBar(); } catch (_) { /* ignore */ }
+            // одразу застосувати новий стан
+            if (isHostLmbBlockEnabled()) {
+                scheduleKillHostCoordMenus(true);
+            }
         }
 
         function isHostCoordMenuEl(el) {
             if (!el || el.nodeType !== 1) return false;
             if (el.id === 'falcon-route-ui' || el.closest?.('#falcon-route-ui')) return false;
-            // не чіпаємо гігантські контейнери карти/сторінки
             if (el === document.body || el === document.documentElement) return false;
-            if (el.childElementCount > 80) return false;
+            if (el.childElementCount > 100) return false;
             try {
                 const st = window.getComputedStyle?.(el);
-                if (st && (st.display === 'none' || st.visibility === 'hidden')) return false;
+                if (st && (st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0')) return false;
             } catch (_) { /* ignore */ }
             const txt = String(el.textContent || '').replace(/\s+/g, ' ').trim();
-            if (txt.length < 12 || txt.length > 1200) return false;
-            const hasSend = /відправити\s+вибран/i.test(txt) || /вибран[іi]\s+координат/i.test(txt);
-            const hasTarget = /встановити\s+ціль/i.test(txt) || /прибрати\s+ціль/i.test(txt);
-            const hasSearch = /пошук\s+за\s+координат/i.test(txt);
-            // Достатньо головного пункту або 2 з 3 маркерів
+            if (txt.length < 10 || txt.length > 2000) return false;
+            // Маркери рідного ЛКМ-меню хоста (ua)
+            const hasSend = /відправити\s+вибран/i.test(txt) || /вибран[іиi]\s+координат/i.test(txt);
+            const hasTarget = /встановити\s+ціль/i.test(txt) || /прибрати\s+ціль/i.test(txt) || /поставити\s+ціль/i.test(txt);
+            const hasSearch = /пошук\s+за\s+координат/i.test(txt) || /пошук\s+координат/i.test(txt);
             if (hasSend) return true;
-            return (hasTarget ? 1 : 0) + (hasSearch ? 1 : 0) + (hasSend ? 1 : 0) >= 2;
+            if (hasTarget && hasSearch) return true;
+            // коротке меню лише з 2 пунктами
+            if (hasTarget && /координат/i.test(txt)) return true;
+            return false;
         }
 
         function killHostCoordMenus(root) {
@@ -7422,45 +7427,46 @@ function formatCoord(lat, lon, format) {
                         el.style.setProperty('display', 'none', 'important');
                         el.style.setProperty('visibility', 'hidden', 'important');
                         el.style.setProperty('pointer-events', 'none', 'important');
+                        el.setAttribute('hidden', 'true');
                         return true;
                     } catch (__) { return false; }
                 }
             };
             if (root && root.nodeType === 1) {
                 tryKill(root);
-                // піднімаємось вгору — інколи в DOM додають внутрішній рядок, а меню — батько
                 try {
                     let p = root.parentElement;
-                    for (let i = 0; p && i < 5; i++, p = p.parentElement) {
+                    for (let i = 0; p && i < 6; i++, p = p.parentElement) {
                         if (tryKill(p)) break;
                     }
                 } catch (_) { /* ignore */ }
-                try {
-                    root.querySelectorAll?.('div, ul, menu, section, aside, nav, span').forEach(tryKill);
-                } catch (_) { /* ignore */ }
+                try { root.querySelectorAll?.('div, ul, menu, section, aside, nav, span, li').forEach(tryKill); } catch (_) { /* ignore */ }
             }
             try {
-                document.querySelectorAll('div, ul, menu, section, aside').forEach((el) => {
-                    if (el.childElementCount > 60) return;
+                document.querySelectorAll('div, ul, menu, section, aside, nav').forEach((el) => {
+                    if (el.childElementCount > 80) return;
                     tryKill(el);
                 });
             } catch (_) { /* ignore */ }
         }
 
-        function scheduleKillHostCoordMenus() {
+        /** force=true — ігнорувати короткий debounce, завжди чистити якщо блок увімкнено */
+        function scheduleKillHostCoordMenus(force) {
             if (!isHostLmbBlockEnabled()) return;
-            if (!isFrMapToolActive()) return;
             killHostCoordMenus();
             try { requestAnimationFrame(() => killHostCoordMenus()); } catch (_) { /* ignore */ }
-            [0, 16, 40, 80, 120, 200, 350, 500, 800].forEach((ms) => {
-                setTimeout(() => killHostCoordMenus(), ms);
-            });
+            const delays = force
+                ? [0, 10, 30, 60, 100, 160, 250, 400, 600, 900, 1200]
+                : [0, 16, 40, 80, 120, 200, 350, 500, 800];
+            delays.forEach((ms) => setTimeout(() => {
+                if (isHostLmbBlockEnabled()) killHostCoordMenus();
+            }, ms));
         }
 
         function getMapRootForHostGuard() {
             try {
                 if (mapType === 'google') {
-                    return map.getDiv?.() || map.getDiv?.() || document.querySelector('.gm-style') || null;
+                    return map.getDiv?.() || document.querySelector('.gm-style') || null;
                 }
                 return map?.canvas?.parentElement || map?.container || document.querySelector('.cesium-viewer') || null;
             } catch (_) {
@@ -7469,11 +7475,11 @@ function formatCoord(lat, lon, format) {
         }
 
         function wireHostMenuGuard() {
-            // знімаємо попередні слухачі (reinject)
             try {
                 if (window.__frHostMenuPtrHandler) {
-                    ['mousedown', 'mouseup', 'click', 'contextmenu', 'pointerdown', 'pointerup'].forEach((ev) => {
+                    ['mousedown', 'mouseup', 'click', 'auxclick', 'contextmenu', 'pointerdown', 'pointerup'].forEach((ev) => {
                         window.removeEventListener(ev, window.__frHostMenuPtrHandler, true);
+                        document.removeEventListener(ev, window.__frHostMenuPtrHandler, true);
                     });
                 }
                 if (window.__frHostMenuObserver) {
@@ -7481,75 +7487,82 @@ function formatCoord(lat, lon, format) {
                     window.__frHostMenuObserver = null;
                 }
                 if (window.__frHostMenuMapRoot && window.__frHostMenuBubbleStop) {
-                    try {
-                        window.__frHostMenuMapRoot.removeEventListener('click', window.__frHostMenuBubbleStop, false);
-                        window.__frHostMenuMapRoot.removeEventListener('mousedown', window.__frHostMenuBubbleStop, false);
-                    } catch (_) { /* ignore */ }
+                    ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup'].forEach((ev) => {
+                        try { window.__frHostMenuMapRoot.removeEventListener(ev, window.__frHostMenuBubbleStop, false); } catch (_) {}
+                        try { window.__frHostMenuMapRoot.removeEventListener(ev, window.__frHostMenuBubbleStop, true); } catch (_) {}
+                    });
                 }
             } catch (_) { /* ignore */ }
 
+            const shouldBlock = () => isHostLmbBlockEnabled();
+
+            // Capture на window: якщо блок УВІМКНЕНО — гасимо меню (кнопка керує цим)
             const onPtr = (e) => {
-                if (!isHostLmbBlockEnabled()) return;
-                if (!isFrMapToolActive()) return;
+                if (!shouldBlock()) return;
                 if (e.target?.closest?.('#falcon-route-ui')) return;
-                // ЛКМ (0) або primary pointer
                 if (e.type !== 'contextmenu') {
-                    const btn = e.button;
-                    if (btn != null && btn !== 0) return;
-                }
-                if (e.type === 'contextmenu') {
+                    if (e.button != null && e.button !== 0) return;
+                } else {
+                    // ПКМ хоста також глушимо під час блоку, щоб не мішало
                     e.preventDefault();
                     e.stopPropagation();
                 }
-                scheduleKillHostCoordMenus();
+                scheduleKillHostCoordMenus(false);
             };
             window.__frHostMenuPtrHandler = onPtr;
-            ['mousedown', 'mouseup', 'click', 'contextmenu', 'pointerdown', 'pointerup'].forEach((ev) => {
+            ['mousedown', 'mouseup', 'click', 'auxclick', 'contextmenu', 'pointerdown', 'pointerup'].forEach((ev) => {
                 window.addEventListener(ev, onPtr, true);
             });
 
-            // Bubble-stop на корені карти: хост часто відкриває меню з document click
+            // На корені карти: stopPropagation у bubble, щоб document-слухач хоста не відкрив меню
             try {
                 const mapRoot = getMapRootForHostGuard();
                 if (mapRoot) {
                     const bubbleStop = (e) => {
-                        if (!isHostLmbBlockEnabled()) return;
-                        if (!isFrMapToolActive()) return;
+                        if (!shouldBlock()) return;
                         if (e.target?.closest?.('#falcon-route-ui')) return;
                         if (e.button != null && e.button !== 0) return;
+                        // ріжемо шлях до хоста, кліки карти (google/cesium) уже оброблені на target
                         e.stopPropagation();
-                        scheduleKillHostCoordMenus();
+                        scheduleKillHostCoordMenus(true);
                     };
-                    mapRoot.addEventListener('mousedown', bubbleStop, false);
-                    mapRoot.addEventListener('click', bubbleStop, false);
+                    ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup'].forEach((ev) => {
+                        mapRoot.addEventListener(ev, bubbleStop, false);
+                    });
                     window.__frHostMenuBubbleStop = bubbleStop;
                     window.__frHostMenuMapRoot = mapRoot;
                     mapRoot.__frHostMenuBubbleStop = bubbleStop;
                 }
             } catch (_) { /* ignore */ }
 
+            // Якщо меню все ж з’явилось — знімаємо з DOM, поки блок увімкнено
             const mo = new MutationObserver((muts) => {
-                if (!isHostLmbBlockEnabled()) return;
-                if (!isFrMapToolActive()) return;
+                if (!shouldBlock()) return;
+                let hit = false;
                 for (const m of muts) {
                     m.addedNodes.forEach((n) => {
-                        if (n.nodeType === 1) killHostCoordMenus(n);
+                        if (n.nodeType === 1) { killHostCoordMenus(n); hit = true; }
                     });
                     if (m.type === 'attributes' && m.target?.nodeType === 1) {
                         killHostCoordMenus(m.target);
+                        hit = true;
                     }
                 }
+                if (hit) scheduleKillHostCoordMenus(false);
             });
             try {
                 mo.observe(document.body, {
                     childList: true,
                     subtree: true,
                     attributes: true,
-                    attributeFilter: ['style', 'class', 'hidden']
+                    attributeFilter: ['style', 'class', 'hidden', 'aria-hidden']
                 });
                 window.__frHostMenuObserver = mo;
             } catch (_) { /* ignore */ }
             window.__frHostMenuGuardWired = true;
+
+            // якщо блок уже увімкнений при старті — прибрати висяче меню
+            if (shouldBlock()) scheduleKillHostCoordMenus(true);
         }
 
         function wireHotkeys() {
