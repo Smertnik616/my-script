@@ -843,7 +843,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'layers-zones-46';
+    const FR_BUILD = 'host-lmb-47';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -7380,7 +7380,7 @@ function formatCoord(lat, lon, format) {
             if (btn) {
                 btn.classList.toggle('active', on);
                 btn.title = on
-                    ? 'Блок ЛКМ-меню хоста УВІМКНЕНО (під час інструментів). Клацни — дозволити меню хоста.'
+                    ? 'Блок ЛКМ-меню хоста УВІМКНЕНО (під час інструментів FR). Клацни — дозволити меню хоста.'
                     : 'Блок ЛКМ-меню хоста ВИМКНЕНО — меню хоста на ЛКМ доступне. Клацни — знову блокувати.';
             }
             if (st) st.textContent = on ? 'блок' : 'дозв.';
@@ -7391,35 +7391,57 @@ function formatCoord(lat, lon, format) {
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) { /* ignore */ }
             syncHostLmbToggleUi();
             syncQuickBar();
+            if (isHostLmbBlockEnabled() && isFrMapToolActive()) scheduleKillHostCoordMenus();
         }
 
         function isHostCoordMenuEl(el) {
             if (!el || el.nodeType !== 1) return false;
             if (el.id === 'falcon-route-ui' || el.closest?.('#falcon-route-ui')) return false;
-            if (el.childElementCount > 40) return false;
-            const t = String(el.textContent || '').replace(/\s+/g, ' ').trim();
-            if (t.length < 20 || t.length > 800) return false;
-            return t.includes('Відправити вибрані координати') &&
-                (t.includes('Встановити ціль') || t.includes('Прибрати ціль') || t.includes('Пошук за координатами'));
+            // не чіпаємо гігантські контейнери карти/сторінки
+            if (el === document.body || el === document.documentElement) return false;
+            if (el.childElementCount > 80) return false;
+            try {
+                const st = window.getComputedStyle?.(el);
+                if (st && (st.display === 'none' || st.visibility === 'hidden')) return false;
+            } catch (_) { /* ignore */ }
+            const txt = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (txt.length < 12 || txt.length > 1200) return false;
+            const hasSend = /відправити\s+вибран/i.test(txt) || /вибран[іi]\s+координат/i.test(txt);
+            const hasTarget = /встановити\s+ціль/i.test(txt) || /прибрати\s+ціль/i.test(txt);
+            const hasSearch = /пошук\s+за\s+координат/i.test(txt);
+            // Достатньо головного пункту або 2 з 3 маркерів
+            if (hasSend) return true;
+            return (hasTarget ? 1 : 0) + (hasSearch ? 1 : 0) + (hasSend ? 1 : 0) >= 2;
         }
 
         function killHostCoordMenus(root) {
             const tryKill = (el) => {
-                if (!isHostCoordMenuEl(el)) return;
-                try { el.remove(); } catch (_) {
-                    try { el.style.setProperty('display', 'none', 'important'); } catch (__) { /* ignore */ }
+                if (!isHostCoordMenuEl(el)) return false;
+                try { el.remove(); return true; } catch (_) {
+                    try {
+                        el.style.setProperty('display', 'none', 'important');
+                        el.style.setProperty('visibility', 'hidden', 'important');
+                        el.style.setProperty('pointer-events', 'none', 'important');
+                        return true;
+                    } catch (__) { return false; }
                 }
             };
-            if (root) {
+            if (root && root.nodeType === 1) {
                 tryKill(root);
+                // піднімаємось вгору — інколи в DOM додають внутрішній рядок, а меню — батько
                 try {
-                    root.querySelectorAll?.('div, ul, menu, section, aside, nav').forEach(tryKill);
+                    let p = root.parentElement;
+                    for (let i = 0; p && i < 5; i++, p = p.parentElement) {
+                        if (tryKill(p)) break;
+                    }
+                } catch (_) { /* ignore */ }
+                try {
+                    root.querySelectorAll?.('div, ul, menu, section, aside, nav, span').forEach(tryKill);
                 } catch (_) { /* ignore */ }
             }
             try {
-                // Меню часто не в body>div, а глибше — шукаємо ширше, але лише «легкі» вузли
-                document.querySelectorAll('div, ul, menu').forEach((el) => {
-                    if (el.childElementCount > 12) return;
+                document.querySelectorAll('div, ul, menu, section, aside').forEach((el) => {
+                    if (el.childElementCount > 60) return;
                     tryKill(el);
                 });
             } catch (_) { /* ignore */ }
@@ -7430,63 +7452,79 @@ function formatCoord(lat, lon, format) {
             if (!isFrMapToolActive()) return;
             killHostCoordMenus();
             try { requestAnimationFrame(() => killHostCoordMenus()); } catch (_) { /* ignore */ }
-            setTimeout(() => killHostCoordMenus(), 0);
-            setTimeout(() => killHostCoordMenus(), 40);
-            setTimeout(() => killHostCoordMenus(), 120);
-            setTimeout(() => killHostCoordMenus(), 250);
+            [0, 16, 40, 80, 120, 200, 350, 500, 800].forEach((ms) => {
+                setTimeout(() => killHostCoordMenus(), ms);
+            });
+        }
+
+        function getMapRootForHostGuard() {
+            try {
+                if (mapType === 'google') {
+                    return map.getDiv?.() || map.getDiv?.() || document.querySelector('.gm-style') || null;
+                }
+                return map?.canvas?.parentElement || map?.container || document.querySelector('.cesium-viewer') || null;
+            } catch (_) {
+                return null;
+            }
         }
 
         function wireHostMenuGuard() {
-            if (window.__frHostMenuGuardWired) {
-                // reinject: keep one observer/listeners via named handler
-                try {
-                    if (window.__frHostMenuPtrHandler) {
-                        window.removeEventListener('mousedown', window.__frHostMenuPtrHandler, true);
-                        window.removeEventListener('mouseup', window.__frHostMenuPtrHandler, true);
-                        window.removeEventListener('click', window.__frHostMenuPtrHandler, true);
-                        window.removeEventListener('contextmenu', window.__frHostMenuPtrHandler, true);
-                        window.removeEventListener('pointerup', window.__frHostMenuPtrHandler, true);
-                    }
-                    if (window.__frHostMenuObserver) {
-                        window.__frHostMenuObserver.disconnect();
-                        window.__frHostMenuObserver = null;
-                    }
-                } catch (_) { /* ignore */ }
-            }
+            // знімаємо попередні слухачі (reinject)
+            try {
+                if (window.__frHostMenuPtrHandler) {
+                    ['mousedown', 'mouseup', 'click', 'contextmenu', 'pointerdown', 'pointerup'].forEach((ev) => {
+                        window.removeEventListener(ev, window.__frHostMenuPtrHandler, true);
+                    });
+                }
+                if (window.__frHostMenuObserver) {
+                    window.__frHostMenuObserver.disconnect();
+                    window.__frHostMenuObserver = null;
+                }
+                if (window.__frHostMenuMapRoot && window.__frHostMenuBubbleStop) {
+                    try {
+                        window.__frHostMenuMapRoot.removeEventListener('click', window.__frHostMenuBubbleStop, false);
+                        window.__frHostMenuMapRoot.removeEventListener('mousedown', window.__frHostMenuBubbleStop, false);
+                    } catch (_) { /* ignore */ }
+                }
+            } catch (_) { /* ignore */ }
+
             const onPtr = (e) => {
                 if (!isHostLmbBlockEnabled()) return;
                 if (!isFrMapToolActive()) return;
                 if (e.target?.closest?.('#falcon-route-ui')) return;
-                // Глушимо рідне ПКМ-меню; ЛКМ-меню хоста прибираємо з DOM
+                // ЛКМ (0) або primary pointer
+                if (e.type !== 'contextmenu') {
+                    const btn = e.button;
+                    if (btn != null && btn !== 0) return;
+                }
                 if (e.type === 'contextmenu') {
                     e.preventDefault();
                     e.stopPropagation();
                 }
-                // Не stopPropagation на click — інакше зламаємо кліки карти для лінійки
                 scheduleKillHostCoordMenus();
             };
             window.__frHostMenuPtrHandler = onPtr;
-            window.addEventListener('mousedown', onPtr, true);
-            window.addEventListener('mouseup', onPtr, true);
-            window.addEventListener('click', onPtr, true);
-            window.addEventListener('contextmenu', onPtr, true);
-            window.addEventListener('pointerup', onPtr, true);
+            ['mousedown', 'mouseup', 'click', 'contextmenu', 'pointerdown', 'pointerup'].forEach((ev) => {
+                window.addEventListener(ev, onPtr, true);
+            });
 
-            // Додатково: якщо хост слухає bubble на document — обрізаємо після карти
+            // Bubble-stop на корені карти: хост часто відкриває меню з document click
             try {
-                const mapRoot = mapType === 'google'
-                    ? (map.getDiv?.() || null)
-                    : (map?.canvas?.parentElement || map?.container || null);
-                if (mapRoot && !mapRoot.__frHostMenuBubbleStop) {
-                    mapRoot.__frHostMenuBubbleStop = (e) => {
+                const mapRoot = getMapRootForHostGuard();
+                if (mapRoot) {
+                    const bubbleStop = (e) => {
                         if (!isHostLmbBlockEnabled()) return;
                         if (!isFrMapToolActive()) return;
                         if (e.target?.closest?.('#falcon-route-ui')) return;
-                        // Не даємо кліку піднятись до хост-меню на document
+                        if (e.button != null && e.button !== 0) return;
                         e.stopPropagation();
                         scheduleKillHostCoordMenus();
                     };
-                    mapRoot.addEventListener('click', mapRoot.__frHostMenuBubbleStop, false);
+                    mapRoot.addEventListener('mousedown', bubbleStop, false);
+                    mapRoot.addEventListener('click', bubbleStop, false);
+                    window.__frHostMenuBubbleStop = bubbleStop;
+                    window.__frHostMenuMapRoot = mapRoot;
+                    mapRoot.__frHostMenuBubbleStop = bubbleStop;
                 }
             } catch (_) { /* ignore */ }
 
@@ -7497,10 +7535,18 @@ function formatCoord(lat, lon, format) {
                     m.addedNodes.forEach((n) => {
                         if (n.nodeType === 1) killHostCoordMenus(n);
                     });
+                    if (m.type === 'attributes' && m.target?.nodeType === 1) {
+                        killHostCoordMenus(m.target);
+                    }
                 }
             });
             try {
-                mo.observe(document.body, { childList: true, subtree: true });
+                mo.observe(document.body, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['style', 'class', 'hidden']
+                });
                 window.__frHostMenuObserver = mo;
             } catch (_) { /* ignore */ }
             window.__frHostMenuGuardWired = true;
