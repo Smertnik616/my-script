@@ -264,7 +264,7 @@
     const DEFAULT_SETTINGS = {
         means: DEFAULT_ZBYTTYA.map(m => ({ ...m })), // збиття (ключ means для сумісності)
         zasibs: DEFAULT_ZASIB.map(m => ({ ...m })),
-        showPoints: true,
+        showPoints: false,
         coordFormat: 'dd',
         timeFilter: 'all',
         meansFilter: 'all',
@@ -276,8 +276,8 @@
         rulerColor: '#22d3ee',
         callsign: 'Falcon',
         flightColor: '#22d3ee',
-        blockHostLmb: true, // блокувати ЛКМ-меню хоста (кнопка Хост ЛКМ)
-        layerPoints: true,
+        blockHostLmb: true, // блок меню хоста лише під час інструментів FR (кнопка Хост ЛКМ)
+        layerPoints: false, // при старті скрипта збиття сховані
         layerTargets: true,
         layerRoads: true,
         layerNotes: true,
@@ -843,7 +843,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'host-lmb-48';
+    const FR_BUILD = 'boot-points-lmb-49';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1220,6 +1220,10 @@ function formatCoord(lat, lon, format) {
         console.log('[FALCONROUTE] init', FR_BUILD, mapType);
 
         let settings = loadSettings();
+        // Кожен запуск: старі точки збиття вимкнені (користувач увімкне сам у Фільтрах)
+        settings.layerPoints = false;
+        settings.showPoints = false;
+
         let poiStore = (JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') || []).map(normalizePoint);
         let timestampsRepaired = false;
         // Полагодити createdAt після міграції (щоб часовий фільтр і лічильник працювали)
@@ -1873,7 +1877,7 @@ function formatCoord(lat, lon, format) {
                             <span class="fr-hot-k" style="position:static;margin-left:4px">Q</span>
                         </button>
                         <button type="button" class="fr-host-lmb active" id="fr-host-lmb" data-fr-cmd="toggle-host-lmb"
-                            title="Блок УВІМКНЕНО: ЛКМ-меню хоста глушиться. Клацни — дозволити.">
+                            title="Блок УВІМКНЕНО: меню хоста глушиться під час інструментів FR. Клацни — дозволити завжди.">
                             <span class="fr-host-lmb-t">Хост ЛКМ</span>
                             <span class="fr-host-lmb-k" id="fr-host-lmb-state">блок</span>
                         </button>
@@ -7380,8 +7384,8 @@ function formatCoord(lat, lon, format) {
             if (btn) {
                 btn.classList.toggle('active', on);
                 btn.title = on
-                    ? 'Блок УВІМКНЕНО: ЛКМ-меню хоста на карті глушиться. Клацни — дозволити.'
-                    : 'Блок ВИМКНЕНО: ЛКМ-меню хоста працює як звичайно. Клацни — блокувати.';
+                    ? 'Блок УВІМКНЕНО: під час лінійки/Q/цілі тощо меню хоста глушиться. Клацни — дозволити завжди.'
+                    : 'Блок ВИМКНЕНО: меню хоста на ЛКМ завжди доступне. Клацни — блокувати під час інструментів.';
             }
             if (st) st.textContent = on ? 'блок' : 'дозв.';
         }
@@ -7391,8 +7395,8 @@ function formatCoord(lat, lon, format) {
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) { /* ignore */ }
             syncHostLmbToggleUi();
             try { syncQuickBar(); } catch (_) { /* ignore */ }
-            // одразу застосувати новий стан
-            if (isHostLmbBlockEnabled()) {
+            // якщо блок увімкнули під час активного інструмента — одразу прибрати меню
+            if (isHostLmbBlockEnabled() && isFrMapToolActive()) {
                 scheduleKillHostCoordMenus(true);
             }
         }
@@ -7453,6 +7457,7 @@ function formatCoord(lat, lon, format) {
         /** force=true — ігнорувати короткий debounce, завжди чистити якщо блок увімкнено */
         function scheduleKillHostCoordMenus(force) {
             if (!isHostLmbBlockEnabled()) return;
+            if (!isFrMapToolActive()) return;
             killHostCoordMenus();
             try { requestAnimationFrame(() => killHostCoordMenus()); } catch (_) { /* ignore */ }
             const delays = force
@@ -7494,7 +7499,8 @@ function formatCoord(lat, lon, format) {
                 }
             } catch (_) { /* ignore */ }
 
-            const shouldBlock = () => isHostLmbBlockEnabled();
+            // Кнопка «блок» = глушити меню хоста ЛИШЕ під час інструментів FR; «дозв.» = ніколи не глушити
+            const shouldBlock = () => isHostLmbBlockEnabled() && isFrMapToolActive();
 
             // Capture на window: якщо блок УВІМКНЕНО — гасимо меню (кнопка керує цим)
             const onPtr = (e) => {
@@ -7715,6 +7721,13 @@ function formatCoord(lat, lon, format) {
         wireHotkeys();
         wireHostMenuGuard();
         syncHostLmbToggleUi();
+        // UI точок збиття: вимкнено на старті
+        try {
+            const lp = document.getElementById('fr-layer-points');
+            const sp = document.getElementById('fr-show-points');
+            if (lp) lp.checked = false;
+            if (sp) sp.checked = false;
+        } catch (_) { /* ignore */ }
         refreshUI();
         renderAnalytics();
         renderZones();
