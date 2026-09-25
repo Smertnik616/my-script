@@ -845,7 +845,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'zone-optional-56';
+    const FR_BUILD = 'hub-filters-57';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1936,6 +1936,11 @@ function formatCoord(lat, lon, format) {
                         <span class="fr-hub-txt">Борт</span>
                         <span class="fr-hub-desc">політ і привʼязка до треку</span>
                     </button>
+                    <button type="button" class="fr-hub-tile" data-fr-acc="filters">
+                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16l-6.2 7.2V19l-3.6 2v-8.8L4 5z"/></svg></span>
+                        <span class="fr-hub-txt">Фільтри карти</span>
+                        <span class="fr-hub-desc">шари · період · райони</span>
+                    </button>
                     <button type="button" class="fr-hub-more-btn" id="fr-hub-more-toggle" aria-expanded="false">Ще ▾</button>
                     <div class="fr-hub-more" id="fr-hub-more">
                         <button type="button" class="fr-hub-tile" data-fr-acc="points">
@@ -1947,11 +1952,6 @@ function formatCoord(lat, lon, format) {
                             <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5l4 14M20 5l-4 14"/><path d="M8 8h8M7 12h10M6 16h12" stroke-dasharray="2.5 2.5"/></svg></span>
                             <span class="fr-hub-txt">Коридор</span>
                             <span class="fr-hub-desc">смуга видимих точок</span>
-                        </button>
-                        <button type="button" class="fr-hub-tile" data-fr-acc="filters">
-                            <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16l-6.2 7.2V19l-3.6 2v-8.8L4 5z"/></svg></span>
-                            <span class="fr-hub-txt">Фільтри карти</span>
-                            <span class="fr-hub-desc">шари · період · райони</span>
                         </button>
                         <button type="button" class="fr-hub-tile" data-fr-acc="coords">
                             <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3"/><path d="M12 8.2l1.4 2.6 2.9.5-2 2.1.4 2.9L12 14.8l-2.7 1.5.4-2.9-2-2.1 2.9-.5L12 8.2z"/></svg></span>
