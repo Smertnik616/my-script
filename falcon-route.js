@@ -845,7 +845,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'mgrs-first-59';
+    const FR_BUILD = 'delete-smooth-60';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -6417,6 +6417,47 @@ function formatCoord(lat, lon, format) {
             analyticsOverlays[bucket] = {};
         }
 
+        /** Зняти один оверлей без повного перемальовування (менше глюків при видаленні). */
+        function removeAnaOverlay(kind, id) {
+            if (!kind || !id) return;
+            const bucket = analyticsOverlays[kind];
+            if (!bucket || !bucket[id]) return;
+            const items = Array.isArray(bucket[id]) ? bucket[id] : [bucket[id]];
+            items.forEach((obj) => {
+                try {
+                    if (!obj) return;
+                    if (mapType === 'google') {
+                        if (typeof obj.setMap === 'function') obj.setMap(null);
+                        else obj.setMap?.(null);
+                    } else {
+                        map.entities.remove(obj);
+                    }
+                } catch (_) { /* ignore */ }
+            });
+            delete bucket[id];
+            try { map.scene?.requestRender?.(); } catch (_) { /* ignore */ }
+        }
+
+        // Локальні видалення: ігнорувати echo з Firebase, щоб не робити 2-й full redraw
+        const _anaLocalDeletes = new Map(); // key "kind/id" → ts
+        function markAnaLocalDelete(kind, id) {
+            _anaLocalDeletes.set(kind + '/' + id, Date.now());
+            // прибрати старі записи
+            if (_anaLocalDeletes.size > 80) {
+                const now = Date.now();
+                for (const [k, ts] of _anaLocalDeletes) {
+                    if (now - ts > 8000) _anaLocalDeletes.delete(k);
+                }
+            }
+        }
+        function consumeAnaLocalDelete(kind, id) {
+            const key = kind + '/' + id;
+            const ts = _anaLocalDeletes.get(key);
+            if (!ts) return false;
+            _anaLocalDeletes.delete(key);
+            return (Date.now() - ts) < 8000;
+        }
+
         function clearAnaDraftOverlays() {
             (analyticsOverlays.draft || []).forEach((obj) => {
                 try {
@@ -6973,27 +7014,38 @@ function formatCoord(lat, lon, format) {
         }
 
         async function deleteAnalyticsItem(kind, id, silent) {
-            if (!id) return;
+            if (!id || !kind) return;
+            const existed = !!(analyticsStore[kind] && analyticsStore[kind][id]);
             if (analyticsStore[kind]) delete analyticsStore[kind][id];
-            renderAnalytics();
+            // точкове зняття з карти — без clearAll + recreate всього
+            removeAnaOverlay(kind, id);
+            markAnaLocalDelete(kind, id);
+            try { renderAnaList(); } catch (_) { /* ignore */ }
+            if (!silent) {
+                try { refreshAnaStatus(); } catch (_) { /* ignore */ }
+            }
             if (!FIREBASE_ENABLED || applyAnalyticsRemote) return;
+            if (!existed && !analyticsStore[kind]) return;
             try {
                 await fetch(analyticsChildUrl(kind, id), { method: 'DELETE' });
             } catch (err) {
                 console.warn('[FALCONROUTE] analytics delete failed', err);
             }
-            if (!silent) refreshAnaStatus();
         }
 
         async function clearAllAnalytics() {
             const kinds = ['targets', 'reserves', 'roads', 'notes'];
             const ids = [];
             kinds.forEach((k) => {
-                Object.keys(analyticsStore[k] || {}).forEach((id) => ids.push([k, id]));
+                Object.keys(analyticsStore[k] || {}).forEach((id) => {
+                    ids.push([k, id]);
+                    markAnaLocalDelete(k, id);
+                });
             });
             analyticsStore = { targets: {}, reserves: {}, roads: {}, notes: {} };
             draftRoadPoints = [];
-            renderAnalytics();
+            clearAllAnalyticsOverlays();
+            try { renderAnaList(); refreshAnaStatus(); } catch (_) { /* ignore */ }
             if (!FIREBASE_ENABLED || applyAnalyticsRemote) return;
             await Promise.all(ids.map(([k, id]) =>
                 fetch(analyticsChildUrl(k, id), { method: 'DELETE' }).catch(() => null)
@@ -7044,15 +7096,22 @@ function formatCoord(lat, lon, format) {
                         if (!['targets', 'reserves', 'roads', 'notes'].includes(kind)) return;
                         applyAnalyticsRemote = true;
                         if (!analyticsStore[kind]) analyticsStore[kind] = {};
-                        if (res.data === null) delete analyticsStore[kind][id];
-                        else if (id) analyticsStore[kind][id] = { ...res.data, id: res.data?.id || id };
-                        else if (res.data && typeof res.data === 'object') {
+                        if (res.data === null) {
+                            delete analyticsStore[kind][id];
+                            // точкове зняття (і для локального echo, і для чужого delete) — без full redraw
+                            consumeAnaLocalDelete(kind, id);
+                            removeAnaOverlay(kind, id);
+                            try { renderAnaList(); refreshAnaStatus(); } catch (_) { /* ignore */ }
+                        } else if (id) {
+                            analyticsStore[kind][id] = { ...res.data, id: res.data?.id || id };
+                            scheduleRenderAnalytics();
+                        } else if (res.data && typeof res.data === 'object') {
                             analyticsStore[kind] = {};
                             Object.keys(res.data).forEach((k) => {
                                 analyticsStore[kind][k] = { ...res.data[k], id: res.data[k]?.id || k };
                             });
+                            scheduleRenderAnalytics();
                         }
-                        scheduleRenderAnalytics();
                         applyAnalyticsRemote = false;
                     } catch (err) {
                         console.warn('[FALCONROUTE] analytics sync parse error', err);
