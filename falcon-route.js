@@ -277,7 +277,7 @@
         rulerColor: '#22d3ee',
         callsign: 'Falcon',
         flightColor: '#22d3ee',
-        blockHostLmb: true, // блок меню хоста лише під час інструментів FR (кнопка Хост ЛКМ)
+        blockHostLmb: true, // автоблок меню хоста лише під час інструментів FR
         layerPoints: false, // при старті скрипта збиття сховані
         layerTargets: true,
         layerReserves: true,
@@ -845,7 +845,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'hub-more-54';
+    const FR_BUILD = 'host-lmb-tool-55';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1892,9 +1892,9 @@ function formatCoord(lat, lon, format) {
                             <span class="fr-hot-k" style="position:static;margin-left:4px">Q</span>
                         </button>
                         <button type="button" class="fr-host-lmb active" id="fr-host-lmb" data-fr-cmd="toggle-host-lmb"
-                            title="Блок УВІМКНЕНО: меню хоста глушиться під час інструментів FR. Клацни — дозволити завжди.">
+                            title="Автоблок: меню хоста глушиться лише під час інструментів FR. Без інструмента — меню штатне.">
                             <span class="fr-host-lmb-t">Хост ЛКМ</span>
-                            <span class="fr-host-lmb-k" id="fr-host-lmb-state">блок</span>
+                            <span class="fr-host-lmb-k" id="fr-host-lmb-state">авто</span>
                         </button>
                     </div>
                     <button class="fr-btn fr-btn-pick" id="fr-pick" style="display:none" aria-hidden="true">pick</button>
@@ -4643,6 +4643,7 @@ function formatCoord(lat, lon, format) {
             const banBtn = document.getElementById('fr-ana-ban');
             if (banBtn) banBtn.classList.toggle('active', isAnaBanMode);
             syncHostLmbToggleUi();
+            try { refreshHostLmbToolGate(); } catch (_) { /* ignore */ }
         }
 
         document.getElementById('fr-pick-visible')?.addEventListener('click', () => {
@@ -7082,6 +7083,7 @@ function formatCoord(lat, lon, format) {
             };
             if (kind && handlers[kind]) handlers[kind]();
             else Object.values(handlers).forEach((fn) => fn());
+            try { syncQuickBar(); } catch (_) { /* ignore */ }
         }
 
         function stopAnalyticsModes(opts) {
@@ -7594,18 +7596,36 @@ function formatCoord(lat, lon, format) {
             return settings.blockHostLmb === true;
         }
 
+        /** Меню хоста: блок лише поки активний інструмент FR; інакше — штатно. */
+        function refreshHostLmbToolGate() {
+            if (!isHostLmbBlockEnabled()) {
+                restoreSuppressedHostMenus();
+                return;
+            }
+            if (isFrMapToolActive()) {
+                scheduleKillHostCoordMenus(false);
+            } else {
+                // інструмент вимкнено — повернути сховані меню хоста
+                restoreSuppressedHostMenus();
+                window.__frHostMenuKillGen = (window.__frHostMenuKillGen || 0) + 1;
+            }
+        }
+
         function syncHostLmbToggleUi() {
             const btn = document.getElementById('fr-host-lmb');
             const st = document.getElementById('fr-host-lmb-state');
             const on = isHostLmbBlockEnabled();
+            const toolOn = isFrMapToolActive();
             if (btn) {
                 btn.classList.toggle('active', on);
                 btn.setAttribute('aria-pressed', on ? 'true' : 'false');
                 btn.title = on
-                    ? 'Блок УВІМКНЕНО: під час інструментів FR меню хоста глушиться. Клацни — дозволити меню.'
-                    : 'Блок ВИМКНЕНО: меню хоста на ЛКМ доступне. Клацни — блокувати під час інструментів.';
+                    ? (toolOn
+                        ? 'Зараз інструмент активний — меню хоста на ЛКМ глушиться. Клацни — вимкнути автоблок.'
+                        : 'Автоблок УВІМКНЕНО: меню хоста глушиться лише під час інструментів FR. Зараз меню працює штатно.')
+                    : 'Автоблок ВИМКНЕНО: меню хоста завжди доступне. Клацни — блокувати лише під час інструментів.';
             }
-            if (st) st.textContent = on ? 'блок' : 'дозв.';
+            if (st) st.textContent = !on ? 'дозв.' : (toolOn ? 'блок' : 'авто');
         }
 
         function restoreSuppressedHostMenus() {
@@ -7785,8 +7805,14 @@ function formatCoord(lat, lon, format) {
             const shouldBlock = () => isHostLmbBlockEnabled() && isFrMapToolActive();
 
             const onPtr = (e) => {
-                if (!shouldBlock()) return;
                 if (e.target?.closest?.('#falcon-route-ui')) return;
+                if (!shouldBlock()) {
+                    // без активного інструмента — меню хоста штатне
+                    if (e.type === 'mousedown' || e.type === 'pointerdown') {
+                        restoreSuppressedHostMenus();
+                    }
+                    return;
+                }
                 if (e.type !== 'contextmenu') {
                     if (e.button != null && e.button !== 0) return;
                 } else {
