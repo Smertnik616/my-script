@@ -845,7 +845,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'host-lmb-tool-55';
+    const FR_BUILD = 'zone-optional-56';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1227,6 +1227,15 @@ function formatCoord(lat, lon, format) {
         settings.showPoints = false;
         // явний boolean для кнопки Хост ЛКМ (старі сейви без поля → увімкнено)
         settings.blockHostLmb = settings.blockHostLmb !== false;
+        // Раніше створення району саме вмикало «лише всередині» — раз скинути на «усі»
+        try {
+            if (localStorage.getItem('falcon_route_zone_filter_reset_v56') !== '1') {
+                localStorage.setItem('falcon_route_zone_filter_reset_v56', '1');
+                if (settings.zoneFilterMode === 'inside') {
+                    settings.zoneFilterMode = 'off';
+                }
+            }
+        } catch (_) { /* ignore */ }
 
         let poiStore = (JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') || []).map(normalizePoint);
         let timestampsRepaired = false;
@@ -2111,7 +2120,7 @@ function formatCoord(lat, lon, format) {
                 <details class="fr-acc" data-fr-acc="filters">
                     <summary><span class="fr-acc-title">Фільтри карти</span></summary>
                     <div class="fr-acc-body">
-                        <div class="fr-hint">Шари — що малювати. Район — показати/сховати обʼєкти по полігону.</div>
+                        <div class="fr-hint">Шари — що малювати. Район можна намалювати без фільтра: точки видно всюди; «Лише всередині» — за бажанням.</div>
                         <div class="fr-layers">
                             <label class="fr-layer"><input type="checkbox" id="fr-layer-points" ${settings.layerPoints !== false ? 'checked' : ''}> Збиття</label>
                             <label class="fr-layer"><input type="checkbox" id="fr-layer-targets" ${settings.layerTargets !== false ? 'checked' : ''}> Цілі</label>
@@ -2143,18 +2152,18 @@ function formatCoord(lat, lon, format) {
                             </div>
                         </div>
                         <div class="fr-field">
-                            <label for="fr-zone-mode">Район на карті</label>
+                            <label for="fr-zone-mode">Фільтр по району</label>
                             <select id="fr-zone-mode">
-                                <option value="off">Без фільтра по району</option>
+                                <option value="off">Усі точки (район лише на карті)</option>
                                 <option value="inside">Лише всередині району</option>
-                                <option value="outside">Сховати всередині району</option>
+                                <option value="outside">Лише поза районом</option>
                             </select>
                         </div>
                         <div class="fr-grid">
                             <button type="button" class="fr-btn fr-btn-pick" id="fr-zone-draw">Малювати район</button>
                             <button type="button" class="fr-btn fr-btn-danger" id="fr-zone-cancel" style="display:none">Скасувати</button>
                         </div>
-                        <div class="fr-hint" id="fr-zone-hint">Клацай вершини · подвійний клік або «Завершити» — зберегти</div>
+                        <div class="fr-hint" id="fr-zone-hint">Клацай вершини · подвійний клік — зберегти. Район можна малювати без фільтра: точки лишаються видимі й поза межами.</div>
                         <div class="fr-zone-list" id="fr-zone-list"></div>
                         <div class="fr-legend" id="fr-legend"></div>
                     </div>
@@ -3551,7 +3560,8 @@ function formatCoord(lat, lon, format) {
 
         function passesZoneFilter(lat, lon) {
             const mode = document.getElementById('fr-zone-mode')?.value || settings.zoneFilterMode || 'off';
-            if (mode === 'off') return true;
+            // без фільтра, без районів або без активного полігону — малюємо все
+            if (mode === 'off' || !zoneStore.length) return true;
             const zone = getActiveZone();
             if (!zone?.path || zone.path.length < 3) return true;
             const inside = pointInPolygon(lat, lon, zone.path);
@@ -3742,11 +3752,8 @@ function formatCoord(lat, lon, format) {
                 };
                 zoneStore.push(item);
                 settings.activeZoneId = item.id;
-                const zm = document.getElementById('fr-zone-mode');
-                if (zm && zm.value === 'off') {
-                    zm.value = 'inside';
-                    settings.zoneFilterMode = 'inside';
-                }
+                // Не вмикаємо фільтр «лише всередині» автоматично —
+                // район лишається на карті, точки видно всюди (і поза межами).
                 persistZones();
             }
             draftZone = [];
