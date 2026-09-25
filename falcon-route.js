@@ -845,7 +845,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'perf-58';
+    const FR_BUILD = 'mgrs-first-59';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -2175,10 +2175,10 @@ function formatCoord(lat, lon, format) {
                         <div class="fr-field">
                             <label for="fr-coord-format">Формат копіювання</label>
                             <select id="fr-coord-format">
+                                <option value="mgrs" selected>MGRS</option>
                                 <option value="dd">DD (десяткові)</option>
                                 <option value="dm">DM</option>
                                 <option value="dms">DMS</option>
-                                <option value="mgrs" selected>MGRS</option>
                             </select>
                         </div>
                         <div class="fr-hint">Q — клацни карту, щоб скопіювати координати. Клік по цілі / мітці / дорозі на карті — видалити.</div>
@@ -2498,7 +2498,18 @@ function formatCoord(lat, lon, format) {
             saveSettings();
         }
 
-        document.getElementById('fr-coord-format').value = settings.coordFormat;
+        // MGRS — формат за замовчуванням
+        if (!settings.coordFormat || !['mgrs', 'dd', 'dm', 'dms'].includes(settings.coordFormat)) {
+            settings.coordFormat = 'mgrs';
+        }
+        try {
+            if (localStorage.getItem('falcon_route_mgrs_default_v59') !== '1') {
+                localStorage.setItem('falcon_route_mgrs_default_v59', '1');
+                settings.coordFormat = 'mgrs';
+                try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) {}
+            }
+        } catch (_) { /* ignore */ }
+        document.getElementById('fr-coord-format').value = settings.coordFormat || 'mgrs';
         document.getElementById('fr-time-filter').value = settings.timeFilter;
         {
             const zm = document.getElementById('fr-zone-mode');
