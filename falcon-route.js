@@ -31,6 +31,7 @@
     let ANALYTICS_URL = roomAnalyticsUrl(DEFAULT_ROOM);
     const FIREBASE_ENABLED = !FIREBASE_ROOT.includes('ВАШ_ПРОЄКТ');
     const STORAGE_KEY = 'cesium_falcon_route_points_v1';
+    const POI_WIPE_FLAG = 'falcon_route_poi_wiped_v53';
     const SETTINGS_KEY = 'cesium_falcon_route_settings_v1';
     const CORRIDOR_KEY = 'cesium_falcon_route_corridor_v1';
     const ZONES_KEY = 'falcon_route_zones_v1';
@@ -279,6 +280,7 @@
         blockHostLmb: true, // блок меню хоста лише під час інструментів FR (кнопка Хост ЛКМ)
         layerPoints: false, // при старті скрипта збиття сховані
         layerTargets: true,
+        layerReserves: true,
         layerRoads: true,
         layerNotes: true,
         layerBans: true,
@@ -843,7 +845,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'host-lmb-restore-52';
+    const FR_BUILD = 'reserves-wipe-53';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1294,16 +1296,18 @@ function formatCoord(lat, lon, format) {
         let draftCorridor = [];
 
         // Аналітика (спільні цілі / дороги / мітки)
-        let analyticsStore = { targets: {}, roads: {}, notes: {} };
-        let analyticsOverlays = { targets: {}, roads: {}, notes: {}, draft: [] };
+        let analyticsStore = { targets: {}, reserves: {}, roads: {}, notes: {} };
+        let analyticsOverlays = { targets: {}, reserves: {}, roads: {}, notes: {}, draft: [] };
         let draftRoadPoints = []; // legacy alias for waypoints preview
         let roadDraft = { start: null, end: null, vias: [], path: [], editingId: null };
         let isAnaTargetMode = false;
+        let isAnaReserveMode = false;
         let isAnaNoteMode = false;
         let isAnaRoadMode = false;
         let isAnaDeleteMode = false;
         let isAnaBanMode = false;
         let anaTargetListener = null;
+        let anaReserveListener = null;
         let anaNoteListener = null;
         let anaRoadListener = null;
         let anaDeleteListener = null;
@@ -1992,10 +1996,11 @@ function formatCoord(lat, lon, format) {
                         </div>
                         <div class="fr-grid-3">
                             <button class="fr-btn fr-btn-pick" id="fr-ana-target">Ціль [T]</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-reserve">Резерв</button>
                             <button class="fr-btn fr-btn-pick" id="fr-ana-ban">⛔ [G]</button>
-                            <button class="fr-btn fr-btn-pick" id="fr-ana-road">Дорога [W]</button>
                         </div>
-                        <div class="fr-grid">
+                        <div class="fr-grid-3">
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-road">Дорога [W]</button>
                             <button class="fr-btn fr-btn-pick" id="fr-ana-note">Мітка</button>
                             <button class="fr-btn" id="fr-ana-road-finish">Застосувати</button>
                         </div>
@@ -2033,6 +2038,7 @@ function formatCoord(lat, lon, format) {
                     <summary><span class="fr-acc-title">Точки збиття</span></summary>
                     <div class="fr-acc-body">
                         <button class="fr-btn fr-btn-pick fr-btn-wide" id="fr-pick-visible" data-fr-click="fr-pick">Поставити точку на карті</button>
+                        <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-points-wipe" title="Видалити всі точки збиття з карти і з синхрону">Видалити всі збиття</button>
                         <div class="fr-field-grid">
                             <div class="fr-field">
                                 <label for="fr-means">Збиття</label>
@@ -2097,6 +2103,7 @@ function formatCoord(lat, lon, format) {
                         <div class="fr-layers">
                             <label class="fr-layer"><input type="checkbox" id="fr-layer-points" ${settings.layerPoints !== false ? 'checked' : ''}> Збиття</label>
                             <label class="fr-layer"><input type="checkbox" id="fr-layer-targets" ${settings.layerTargets !== false ? 'checked' : ''}> Цілі</label>
+                            <label class="fr-layer"><input type="checkbox" id="fr-layer-reserves" ${settings.layerReserves !== false ? 'checked' : ''}> Резервні цілі</label>
                             <label class="fr-layer"><input type="checkbox" id="fr-layer-roads" ${settings.layerRoads !== false ? 'checked' : ''}> Дороги</label>
                             <label class="fr-layer"><input type="checkbox" id="fr-layer-notes" ${settings.layerNotes !== false ? 'checked' : ''}> Мітки</label>
                             <label class="fr-layer"><input type="checkbox" id="fr-layer-bans" ${settings.layerBans !== false ? 'checked' : ''}> Заборони</label>
@@ -2315,6 +2322,7 @@ function formatCoord(lat, lon, format) {
             settings.flightColor = document.getElementById('fr-flight-color')?.value || '#22d3ee';
             settings.layerPoints = !!document.getElementById('fr-layer-points')?.checked;
             settings.layerTargets = !!document.getElementById('fr-layer-targets')?.checked;
+            settings.layerReserves = !!document.getElementById('fr-layer-reserves')?.checked;
             settings.layerRoads = !!document.getElementById('fr-layer-roads')?.checked;
             settings.layerNotes = !!document.getElementById('fr-layer-notes')?.checked;
             settings.layerBans = !!document.getElementById('fr-layer-bans')?.checked;
@@ -3461,6 +3469,31 @@ function formatCoord(lat, lon, format) {
             map.scene?.requestRender?.();
         }
 
+        function wipeAllShootdownPoints(opts) {
+            const silent = !!(opts && opts.silent);
+            const n = Array.isArray(poiStore) ? poiStore.length : 0;
+            if (!silent && n > 0) {
+                if (!confirm(`Видалити всі точки збиття (${n}) з карти і з Firebase?`)) return;
+            }
+            saveData([]);
+            setAnaStatus?.('Усі точки збиття видалено', false);
+            try {
+                const status = document.getElementById('fr-points-status');
+                if (status) status.textContent = 'Точки збиття очищено';
+            } catch (_) { /* ignore */ }
+            console.log('[FALCONROUTE] shootdown points wiped:', n);
+        }
+
+        function wipeOldShootdownsOnce() {
+            try {
+                if (localStorage.getItem(POI_WIPE_FLAG) === '1') return;
+                localStorage.setItem(POI_WIPE_FLAG, '1');
+            } catch (_) { /* ignore */ }
+            if (!Array.isArray(poiStore) || !poiStore.length) return;
+            console.log('[FALCONROUTE] one-time wipe of old shootdown points:', poiStore.length);
+            wipeAllShootdownPoints({ silent: true });
+        }
+
         function saveData(data) {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
             poiStore = data;
@@ -4016,7 +4049,7 @@ function formatCoord(lat, lon, format) {
         showPointsEl.addEventListener('input', onFilterChange);
 
         ['fr-time-filter', 'fr-means-filter', 'fr-zasib-filter', 'fr-zone-mode',
-            'fr-layer-points', 'fr-layer-targets', 'fr-layer-roads', 'fr-layer-notes', 'fr-layer-bans'
+            'fr-layer-points', 'fr-layer-targets', 'fr-layer-reserves', 'fr-layer-roads', 'fr-layer-notes', 'fr-layer-bans'
         ].forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
@@ -6182,9 +6215,10 @@ function formatCoord(lat, lon, format) {
 
         function countAnalytics() {
             const t = Object.keys(analyticsStore.targets || {}).length;
+            const rv = Object.keys(analyticsStore.reserves || {}).length;
             const r = Object.keys(analyticsStore.roads || {}).length;
             const n = Object.keys(analyticsStore.notes || {}).length;
-            return { t, r, n, total: t + r + n };
+            return { t, rv, r, n, total: t + rv + r + n };
         }
 
         function refreshAnaStatus() {
@@ -6212,6 +6246,10 @@ function formatCoord(lat, lon, format) {
                 setAnaStatus('Клацни карту — спільна ціль польоту', false);
                 return;
             }
+            if (isAnaReserveMode) {
+                setAnaStatus('Клацни карту — резервна ціль', false);
+                return;
+            }
             if (isAnaNoteMode) {
                 setAnaStatus('Клацни карту — мітка з текстом', false);
                 return;
@@ -6224,7 +6262,7 @@ function formatCoord(lat, lon, format) {
                 setAnaStatus('Немає спільних позначок', true);
                 return;
             }
-            setAnaStatus(`Цілей: ${c.t} · доріг: ${c.r} · міток: ${c.n} · ✕ у списку або «Видалити з карти»`, false);
+            setAnaStatus(`Цілей: ${c.t} · резерв: ${c.rv} · доріг: ${c.r} · міток: ${c.n} · ✕ у списку або «Видалити з карти»`, false);
         }
 
         function analyticsTargetIcon(color) {
@@ -6234,6 +6272,16 @@ function formatCoord(lat, lon, format) {
                 `<circle cx="20" cy="20" r="16" fill="${c}" fill-opacity="0.28"/>` +
                 `<circle cx="20" cy="20" r="10" fill="${c}" fill-opacity="0.55" stroke="#fff" stroke-width="1.5"/>` +
                 `<circle cx="20" cy="20" r="4" fill="#fff"/></svg>`;
+            return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+        }
+
+        function analyticsReserveIcon(color) {
+            const c = color || '#a78bfa';
+            const svg =
+                `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">` +
+                `<rect x="8" y="8" width="24" height="24" rx="3" transform="rotate(45 20 20)" fill="${c}" fill-opacity="0.35" stroke="#fff" stroke-width="1.6"/>` +
+                `<rect x="13" y="13" width="14" height="14" rx="2" transform="rotate(45 20 20)" fill="${c}" stroke="#fff" stroke-width="1.2"/>` +
+                `<circle cx="20" cy="20" r="3.2" fill="#fff"/></svg>`;
             return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
         }
 
@@ -6285,6 +6333,7 @@ function formatCoord(lat, lon, format) {
 
         function clearAllAnalyticsOverlays() {
             clearAnaOverlayBucket('targets');
+            clearAnaOverlayBucket('reserves');
             clearAnaOverlayBucket('roads');
             clearAnaOverlayBucket('notes');
             clearAnaDraftOverlays();
@@ -6412,6 +6461,63 @@ function formatCoord(lat, lon, format) {
                     if (lab) parts.push(lab);
                 }
                 analyticsOverlays.targets[id] = parts;
+            });
+
+            const showReserves = settings.layerReserves !== false;
+            const reserves = analyticsStore.reserves || {};
+            Object.keys(reserves).forEach((id) => {
+                const t = reserves[id];
+                if (!showReserves) return;
+                if (!t || !Number.isFinite(t.lat) || !Number.isFinite(t.lon)) return;
+                if (!passesTimeFilter(t, timeMode)) return;
+                if (!passesZoneFilter(t.lat, t.lon)) return;
+                const color = t.color || '#a78bfa';
+                const parts = [];
+                if (mapType === 'google') {
+                    const m = new google.maps.Marker({
+                        map,
+                        position: { lat: t.lat, lng: t.lon },
+                        icon: {
+                            url: analyticsReserveIcon(color),
+                            scaledSize: new google.maps.Size(40, 40),
+                            anchor: new google.maps.Point(20, 20)
+                        },
+                        zIndex: 880,
+                        title: t.text || 'Резервна ціль'
+                    });
+                    markOwnOverlay(m);
+                    m.addListener('click', (ev) => {
+                        try { ev?.stop?.(); } catch (_) {}
+                        deleteAnalyticsItem('reserves', id);
+                        setAnaStatus('Резервну ціль видалено', false);
+                    });
+                    parts.push(m);
+                    const lab = createAnaLabel(t.lat, t.lon, t.text || 'Резерв', 'target', () => {
+                        deleteAnalyticsItem('reserves', id);
+                        setAnaStatus('Резервну ціль видалено', false);
+                    });
+                    if (lab) parts.push(lab);
+                } else {
+                    parts.push(map.entities.add({
+                        position: Cesium.Cartesian3.fromDegrees(t.lon, t.lat),
+                        billboard: {
+                            image: analyticsReserveIcon(color),
+                            width: 40,
+                            height: 40,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY
+                        },
+                        point: {
+                            pixelSize: 9,
+                            color: toCesiumColor(color, 0.95),
+                            outlineColor: toCesiumColor('#ffffff'),
+                            outlineWidth: 2,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY
+                        }
+                    }));
+                    const lab = createAnaLabel(t.lat, t.lon, t.text || 'Резерв', 'target');
+                    if (lab) parts.push(lab);
+                }
+                analyticsOverlays.reserves[id] = parts;
             });
 
             const roads = analyticsStore.roads || {};
@@ -6709,6 +6815,9 @@ function formatCoord(lat, lon, format) {
             Object.values(analyticsStore.targets || {}).forEach((t) => {
                 rows.push({ kind: 'targets', id: t.id, label: `◎ ${t.text || 'Ціль'}`, sub: `${t.lat?.toFixed?.(5)}, ${t.lon?.toFixed?.(5)}` });
             });
+            Object.values(analyticsStore.reserves || {}).forEach((t) => {
+                rows.push({ kind: 'reserves', id: t.id, label: `◇ ${t.text || 'Резервна ціль'}`, sub: `${t.lat?.toFixed?.(5)}, ${t.lon?.toFixed?.(5)}` });
+            });
             Object.values(analyticsStore.roads || {}).forEach((r) => {
                 const n = Array.isArray(r.path) ? r.path.length : 0;
                 rows.push({ kind: 'roads', id: r.id, label: `Дорога`, sub: `${n} тчк` });
@@ -6775,12 +6884,12 @@ function formatCoord(lat, lon, format) {
         }
 
         async function clearAllAnalytics() {
-            const kinds = ['targets', 'roads', 'notes'];
+            const kinds = ['targets', 'reserves', 'roads', 'notes'];
             const ids = [];
             kinds.forEach((k) => {
                 Object.keys(analyticsStore[k] || {}).forEach((id) => ids.push([k, id]));
             });
-            analyticsStore = { targets: {}, roads: {}, notes: {} };
+            analyticsStore = { targets: {}, reserves: {}, roads: {}, notes: {} };
             draftRoadPoints = [];
             renderAnalytics();
             if (!FIREBASE_ENABLED || applyAnalyticsRemote) return;
@@ -6790,9 +6899,9 @@ function formatCoord(lat, lon, format) {
         }
 
         function normalizeAnalyticsPayload(data) {
-            const out = { targets: {}, roads: {}, notes: {} };
+            const out = { targets: {}, reserves: {}, roads: {}, notes: {} };
             if (!data || typeof data !== 'object') return out;
-            ['targets', 'roads', 'notes'].forEach((kind) => {
+            ['targets', 'reserves', 'roads', 'notes'].forEach((kind) => {
                 const src = data[kind];
                 if (!src || typeof src !== 'object') return;
                 Object.keys(src).forEach((id) => {
@@ -6830,7 +6939,7 @@ function formatCoord(lat, lon, format) {
                         const parts = String(res.path || '').replace(/^\//, '').split('/');
                         const kind = parts[0];
                         const id = parts[1];
-                        if (!['targets', 'roads', 'notes'].includes(kind)) return;
+                        if (!['targets', 'reserves', 'roads', 'notes'].includes(kind)) return;
                         applyAnalyticsRemote = true;
                         if (!analyticsStore[kind]) analyticsStore[kind] = {};
                         if (res.data === null) delete analyticsStore[kind][id];
@@ -6854,6 +6963,7 @@ function formatCoord(lat, lon, format) {
                             applyAnalyticsRemote = true;
                             const next = normalizeAnalyticsPayload({
                                 targets: { ...(analyticsStore.targets || {}), ...(res.data.targets || {}) },
+                                reserves: { ...(analyticsStore.reserves || {}), ...(res.data.reserves || {}) },
                                 roads: { ...(analyticsStore.roads || {}), ...(res.data.roads || {}) },
                                 notes: { ...(analyticsStore.notes || {}), ...(res.data.notes || {}) }
                             });
@@ -6934,6 +7044,19 @@ function formatCoord(lat, lon, format) {
                         btn.classList.remove('active');
                         btn.textContent = 'Заборона [G]';
                     }
+                },
+                reserve: () => {
+                    if (anaReserveListener) {
+                        if (mapType === 'google') google.maps.event.removeListener(anaReserveListener);
+                        else if (map.canvas) map.canvas.removeEventListener('click', anaReserveListener);
+                        anaReserveListener = null;
+                    }
+                    isAnaReserveMode = false;
+                    const btn = document.getElementById('fr-ana-reserve');
+                    if (btn) {
+                        btn.classList.remove('active');
+                        btn.textContent = 'Резерв';
+                    }
                 }
             };
             if (kind && handlers[kind]) handlers[kind]();
@@ -6970,6 +7093,7 @@ function formatCoord(lat, lon, format) {
             clearAnaListener('road');
             clearAnaListener('delete');
             clearAnaListener('ban');
+            clearAnaListener('reserve');
             resetRoadDraft();
             clearAnaDraftOverlays();
             if (isAnaTargetMode) {
@@ -7017,9 +7141,67 @@ function formatCoord(lat, lon, format) {
             }
         }
 
+        function beginAnaReservePlace() {
+            cancelMapModesForAnalytics();
+            clearAnaListener('target');
+            clearAnaListener('note');
+            clearAnaListener('road');
+            clearAnaListener('delete');
+            clearAnaListener('ban');
+            resetRoadDraft();
+            clearAnaDraftOverlays();
+            if (isAnaReserveMode) {
+                clearAnaListener('reserve');
+                refreshAnaStatus();
+                syncQuickBar();
+                return;
+            }
+            isAnaReserveMode = true;
+            const btn = document.getElementById('fr-ana-reserve');
+            if (btn) {
+                btn.classList.add('active');
+                btn.textContent = 'Клацни резерв…';
+            }
+            refreshAnaStatus();
+            syncQuickBar();
+            const onPick = (lat, lon) => {
+                const item = {
+                    id: anaNewId('rsv'),
+                    lat,
+                    lon,
+                    text: anaTextInput() || 'Резерв',
+                    color: anaColor() || '#a78bfa',
+                    type: 'reserve',
+                    createdBy: CLIENT_ID,
+                    createdAt: Date.now()
+                };
+                if (!analyticsStore.reserves) analyticsStore.reserves = {};
+                analyticsStore.reserves[item.id] = item;
+                clearAnaListener('reserve');
+                renderAnalytics();
+                pushAnalyticsItem('reserves', item);
+                setAnaStatus('Резервну ціль додано', false);
+            };
+            if (mapType === 'google') {
+                anaReserveListener = map.addListener('click', (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                });
+            } else if (map.canvas) {
+                anaReserveListener = (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                };
+                map.canvas.addEventListener('click', anaReserveListener);
+            }
+        }
+
         function beginAnaNotePlace() {
             cancelMapModesForAnalytics();
             clearAnaListener('target');
+            clearAnaListener('reserve');
             clearAnaListener('road');
             clearAnaListener('delete');
             clearAnaListener('ban');
@@ -7090,6 +7272,7 @@ function formatCoord(lat, lon, format) {
         function beginAnaRoadDraw() {
             cancelMapModesForAnalytics();
             clearAnaListener('target');
+            clearAnaListener('reserve');
             clearAnaListener('note');
             clearAnaListener('delete');
             clearAnaListener('ban');
@@ -7213,6 +7396,13 @@ function formatCoord(lat, lon, format) {
                     best = { kind: 'targets', id: t.id, d };
                 }
             });
+            Object.values(analyticsStore.reserves || {}).forEach((t) => {
+                const d = anaHaversineM(p, t);
+                if (d < bestD) {
+                    bestD = d;
+                    best = { kind: 'reserves', id: t.id, d };
+                }
+            });
             Object.values(analyticsStore.notes || {}).forEach((n) => {
                 const d = anaHaversineM(p, n);
                 if (d < bestD) {
@@ -7236,6 +7426,7 @@ function formatCoord(lat, lon, format) {
         function beginAnaBanPlace() {
             cancelMapModesForAnalytics();
             clearAnaListener('target');
+            clearAnaListener('reserve');
             clearAnaListener('note');
             clearAnaListener('road');
             clearAnaListener('delete');
@@ -7290,6 +7481,7 @@ function formatCoord(lat, lon, format) {
         function beginAnaDeleteMode() {
             cancelMapModesForAnalytics();
             clearAnaListener('target');
+            clearAnaListener('reserve');
             clearAnaListener('note');
             clearAnaListener('road');
             clearAnaListener('ban');
@@ -7336,6 +7528,7 @@ function formatCoord(lat, lon, format) {
 
         function wireAnalyticsUi() {
             document.getElementById('fr-ana-target')?.addEventListener('click', () => beginAnaTargetPlace());
+            document.getElementById('fr-ana-reserve')?.addEventListener('click', () => beginAnaReservePlace());
             document.getElementById('fr-ana-note')?.addEventListener('click', () => beginAnaNotePlace());
             document.getElementById('fr-ana-ban')?.addEventListener('click', () => beginAnaBanPlace());
             document.getElementById('fr-ana-road')?.addEventListener('click', () => beginAnaRoadDraw());
@@ -7344,7 +7537,7 @@ function formatCoord(lat, lon, format) {
             document.getElementById('fr-ana-delete')?.addEventListener('click', () => beginAnaDeleteMode());
             document.getElementById('fr-ana-clear')?.addEventListener('click', () => {
                 if (!countAnalytics().total && !draftRoadPoints.length && !roadDraft.start) return;
-                if (!confirm('Скинути всю спільну аналітику (цілі, дороги, мітки)?')) return;
+                if (!confirm('Скинути всю спільну аналітику (цілі, резерви, дороги, мітки)?')) return;
                 stopAnalyticsModes();
                 clearAllAnalytics();
             });
@@ -7364,6 +7557,7 @@ function formatCoord(lat, lon, format) {
                 isCorridorMode ||
                 isAimPlaceMode ||
                 isAnaTargetMode ||
+                isAnaReserveMode ||
                 isAnaNoteMode ||
                 isAnaRoadMode ||
                 isAnaDeleteMode ||
@@ -7677,7 +7871,7 @@ function formatCoord(lat, lon, format) {
                         return;
                     }
                     if (e.key === 'Escape') {
-                        if (isAnaTargetMode || isAnaNoteMode || isAnaRoadMode || isAnaDeleteMode || isAnaBanMode) {
+                        if (isAnaTargetMode || isAnaReserveMode || isAnaNoteMode || isAnaRoadMode || isAnaDeleteMode || isAnaBanMode) {
                             e.preventDefault();
                             stopAnalyticsModes();
                         }
@@ -7791,6 +7985,9 @@ function formatCoord(lat, lon, format) {
         document.getElementById('fr-zone-draw')?.addEventListener('click', () => beginZoneDrawMode());
         document.getElementById('fr-zone-cancel')?.addEventListener('click', () => stopZoneDrawMode(false));
         loadZones();
+
+        document.getElementById('fr-points-wipe')?.addEventListener('click', () => wipeAllShootdownPoints());
+        wipeOldShootdownsOnce();
 
         wireAnalyticsUi();
         wireHotkeys();
