@@ -845,7 +845,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'hub-filters-57';
+    const FR_BUILD = 'perf-58';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -3374,6 +3374,7 @@ function formatCoord(lat, lon, format) {
             if (!document.getElementById('fr-show-points').checked) return;
 
             const visible = getVisiblePoints();
+            const showPoiLabels = visible.length <= 60;
 
             if (mapType === 'google') {
                 visible.forEach(pt => {
@@ -3418,12 +3419,14 @@ function formatCoord(lat, lon, format) {
 
                     overlayObjects.push(marker, circle);
 
-                    // Над точкою — назва збиття (кольорова категорія)
-                    const meansOv = createGoogleMeansOverlay(
-                        new google.maps.LatLng(pt.lat, pt.lon),
-                        pt.means || ''
-                    );
-                    if (meansOv) labelOverlays.push(meansOv);
+                    // Підписи збиття — лише якщо точок небагато (інакше гальмує pan/zoom)
+                    if (showPoiLabels && pt.means) {
+                        const meansOv = createGoogleMeansOverlay(
+                            new google.maps.LatLng(pt.lat, pt.lon),
+                            pt.means
+                        );
+                        if (meansOv) labelOverlays.push(meansOv);
+                    }
                 });
                 return;
             }
@@ -3464,7 +3467,7 @@ function formatCoord(lat, lon, format) {
                 });
                 overlayObjects.push(entity);
 
-                if (pt.means) {
+                if (showPoiLabels && pt.means) {
                     const meansEnt = map.entities.add({
                         position: pos,
                         label: {
@@ -3518,7 +3521,7 @@ function formatCoord(lat, lon, format) {
         function saveData(data) {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
             poiStore = data;
-            refreshUI();
+            refreshUI({ immediate: true });
             pushToFirebase(data);
         }
 
@@ -3922,7 +3925,17 @@ function formatCoord(lat, lon, format) {
             });
         }
 
-        function refreshUI() {
+        let _uiRefreshTimer = null;
+        function refreshUI(opts) {
+            const immediate = !!(opts && opts.immediate);
+            if (!immediate) {
+                if (_uiRefreshTimer) return;
+                _uiRefreshTimer = setTimeout(() => {
+                    _uiRefreshTimer = null;
+                    refreshUI({ immediate: true });
+                }, 90);
+                return;
+            }
             renderList();
             renderMap();
             renderRuler();
@@ -4057,8 +4070,8 @@ function formatCoord(lat, lon, format) {
 
         function onFilterChange() {
             saveSettings();
-            refreshUI();
-            renderAnalytics();
+            refreshUI({ immediate: true });
+            scheduleRenderAnalytics({ immediate: true });
             renderZones();
             syncQuickBar();
         }
@@ -5856,12 +5869,21 @@ function formatCoord(lat, lon, format) {
             if (aimTarget) {
                 updateAimLine(myPos || null);
             }
-            flightRaf = requestAnimationFrame(tickFlights);
+            // RAF: startFlightLoop → tickFlightsThrottled
+        }
+
+        let _flightLastTs = 0;
+        const FLIGHT_TICK_MS = 66; // ~15 fps
+        function tickFlightsThrottled(ts) {
+            flightRaf = requestAnimationFrame(tickFlightsThrottled);
+            if (ts && _flightLastTs && (ts - _flightLastTs) < FLIGHT_TICK_MS) return;
+            _flightLastTs = ts || (typeof performance !== 'undefined' ? performance.now() : Date.now());
+            try { tickFlights(); } catch (err) { console.warn('[FALCONROUTE] tickFlights', err); }
         }
 
         function startFlightLoop() {
             if (flightRaf) return;
-            flightRaf = requestAnimationFrame(tickFlights);
+            flightRaf = requestAnimationFrame(tickFlightsThrottled);
         }
 
         function ensurePushTimer() {
@@ -6294,41 +6316,75 @@ function formatCoord(lat, lon, format) {
             setAnaStatus(`Цілей: ${c.t} · резерв: ${c.rv} · доріг: ${c.r} · міток: ${c.n} · ✕ у списку або «Видалити з карти»`, false);
         }
 
+        const _anaIconCache = Object.create(null);
+        function _cachedAnaIcon(key, build) {
+            if (_anaIconCache[key]) return _anaIconCache[key];
+            return (_anaIconCache[key] = build());
+        }
+
+        let _anaRenderTimer = null;
+        const ANA_LABEL_CAP = 40;
+        let _showAnaLabels = true;
+        function scheduleRenderAnalytics(opts) {
+            const immediate = !!(opts && opts.immediate);
+            if (immediate) {
+                if (_anaRenderTimer) {
+                    clearTimeout(_anaRenderTimer);
+                    _anaRenderTimer = null;
+                }
+                renderAnalytics();
+                return;
+            }
+            if (_anaRenderTimer) return;
+            _anaRenderTimer = setTimeout(() => {
+                _anaRenderTimer = null;
+                renderAnalytics();
+            }, 140);
+        }
+
         function analyticsTargetIcon(color) {
             const c = color || '#fbbf24';
+            return _cachedAnaIcon('tgt:' + c, () => {
             const svg =
                 `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">` +
                 `<circle cx="20" cy="20" r="16" fill="${c}" fill-opacity="0.28"/>` +
                 `<circle cx="20" cy="20" r="10" fill="${c}" fill-opacity="0.55" stroke="#fff" stroke-width="1.5"/>` +
                 `<circle cx="20" cy="20" r="4" fill="#fff"/></svg>`;
-            return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+                return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+            });
         }
 
         function analyticsReserveIcon(color) {
             const c = color || '#a78bfa';
+            return _cachedAnaIcon('rsv:' + c, () => {
             const svg =
                 `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">` +
                 `<rect x="8" y="8" width="24" height="24" rx="3" transform="rotate(45 20 20)" fill="${c}" fill-opacity="0.35" stroke="#fff" stroke-width="1.6"/>` +
                 `<rect x="13" y="13" width="14" height="14" rx="2" transform="rotate(45 20 20)" fill="${c}" stroke="#fff" stroke-width="1.2"/>` +
                 `<circle cx="20" cy="20" r="3.2" fill="#fff"/></svg>`;
-            return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+                return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+            });
         }
 
         function analyticsNoteIcon(color) {
             const c = color || '#38bdf8';
+            return _cachedAnaIcon('note:' + c, () => {
             const svg =
                 `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">` +
                 `<circle cx="14" cy="14" r="9" fill="${c}" stroke="#fff" stroke-width="2"/></svg>`;
-            return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+                return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+            });
         }
 
         function analyticsBanIcon() {
+            return _cachedAnaIcon('ban', () => {
             const svg =
                 `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">` +
                 `<circle cx="20" cy="20" r="16" fill="#dc2626" stroke="#ffffff" stroke-width="2.5"/>` +
                 `<rect x="8" y="17.5" width="24" height="5" rx="1.5" fill="#ffffff"/>` +
                 `</svg>`;
-            return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+                return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+            });
         }
 
         function clearAnaOverlayBucket(bucket) {
@@ -6370,6 +6426,7 @@ function formatCoord(lat, lon, format) {
 
         function createAnaLabel(lat, lon, text, kind, onClick) {
             if (!text) return null;
+            if (!_showAnaLabels) return null;
             if (mapType === 'google') {
                 class FrAnaLabel extends google.maps.OverlayView {
                     constructor() {
@@ -6436,6 +6493,12 @@ function formatCoord(lat, lon, format) {
             const showRoads = settings.layerRoads !== false;
             const showNotes = settings.layerNotes !== false;
             const showBans = settings.layerBans !== false;
+            const showReserves = settings.layerReserves !== false;
+            let approx = 0;
+            if (showTargets) approx += Object.keys(analyticsStore.targets || {}).length;
+            if (showReserves) approx += Object.keys(analyticsStore.reserves || {}).length;
+            if (showNotes || showBans) approx += Object.keys(analyticsStore.notes || {}).length;
+            _showAnaLabels = approx <= ANA_LABEL_CAP;
             const targets = analyticsStore.targets || {};
             Object.keys(targets).forEach((id) => {
                 const t = targets[id];
@@ -6492,7 +6555,6 @@ function formatCoord(lat, lon, format) {
                 analyticsOverlays.targets[id] = parts;
             });
 
-            const showReserves = settings.layerReserves !== false;
             const reserves = analyticsStore.reserves || {};
             Object.keys(reserves).forEach((id) => {
                 const t = reserves[id];
@@ -6945,7 +7007,7 @@ function formatCoord(lat, lon, format) {
         function applyAnalyticsData(data) {
             applyAnalyticsRemote = true;
             analyticsStore = normalizeAnalyticsPayload(data);
-            renderAnalytics();
+            scheduleRenderAnalytics();
             applyAnalyticsRemote = false;
         }
 
@@ -6979,7 +7041,7 @@ function formatCoord(lat, lon, format) {
                                 analyticsStore[kind][k] = { ...res.data[k], id: res.data[k]?.id || k };
                             });
                         }
-                        renderAnalytics();
+                        scheduleRenderAnalytics();
                         applyAnalyticsRemote = false;
                     } catch (err) {
                         console.warn('[FALCONROUTE] analytics sync parse error', err);
@@ -6997,7 +7059,7 @@ function formatCoord(lat, lon, format) {
                                 notes: { ...(analyticsStore.notes || {}), ...(res.data.notes || {}) }
                             });
                             analyticsStore = next;
-                            renderAnalytics();
+                            scheduleRenderAnalytics();
                             applyAnalyticsRemote = false;
                         }
                     } catch (_) { /* ignore */ }
@@ -7758,8 +7820,8 @@ function formatCoord(lat, lon, format) {
             run();
             try { requestAnimationFrame(run); } catch (_) { /* ignore */ }
             (force
-                ? [0, 10, 30, 60, 100, 160, 250, 400, 600]
-                : [0, 16, 40, 80, 120, 200, 350, 500]
+                ? [0, 40, 120, 280]
+                : [0, 60, 180]
             ).forEach((ms) => setTimeout(run, ms));
         }
 
