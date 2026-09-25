@@ -845,7 +845,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'reserves-wipe-53';
+    const FR_BUILD = 'hub-more-54';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1805,6 +1805,15 @@ function formatCoord(lat, lon, format) {
                 #falcon-route-ui .fr-dock-btn:hover .fr-ico,
                 #falcon-route-ui .fr-dock-btn.active .fr-ico { color:#fff; }
                 #falcon-route-ui .fr-hub-tile .fr-ico { width:22px; height:22px; margin-bottom:2px; }
+                #falcon-route-ui .fr-hub-more-btn {
+                    grid-column:1 / -1; min-height:32px; border-radius:10px; border:1px dashed #334155;
+                    background:#0f172a; color:#94a3b8; font-weight:700; font-size:11px; cursor:pointer;
+                }
+                #falcon-route-ui .fr-hub-more-btn:hover { border-color:#38bdf8; color:#e2e8f0; }
+                #falcon-route-ui .fr-hub-more {
+                    display:none; grid-column:1 / -1; grid-template-columns:repeat(3,1fr); gap:6px;
+                }
+                #falcon-route-ui .fr-hub.fr-hub-expanded .fr-hub-more { display:grid; }
                 #falcon-route-ui.fr-hub-mode .fr-hub { display:grid !important; }
                 #falcon-route-ui.fr-hub-mode details.fr-acc { display:none !important; }
                 #falcon-route-ui.fr-hub-mode #fr-hub-back { display:none !important; }
@@ -1913,41 +1922,44 @@ function formatCoord(lat, lon, format) {
                         <span class="fr-hub-txt">Аналітика</span>
                         <span class="fr-hub-desc">цілі, дороги, мітки для всіх</span>
                     </button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="corridor">
-                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5l4 14M20 5l-4 14"/><path d="M8 8h8M7 12h10M6 16h12" stroke-dasharray="2.5 2.5"/></svg></span>
-                        <span class="fr-hub-txt">Коридор</span>
-                        <span class="fr-hub-desc">смуга видимих точок</span>
-                    </button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="points">
-                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 19s5-3.8 5-8a5 5 0 1 0-10 0c0 4.2 5 8 5 8z"/><circle cx="8" cy="11" r="1.6"/><path d="M17 20s4-3 4-6.5a4 4 0 1 0-8 0c0 3.5 4 6.5 4 6.5z"/><circle cx="17" cy="13.5" r="1.3"/></svg></span>
-                        <span class="fr-hub-txt">Точки збиття</span>
-                        <span class="fr-hub-desc">точки, висота, кольори</span>
-                    </button>
                     <button type="button" class="fr-hub-tile" data-fr-acc="flight">
                         <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13.5l8.5-1.2L21 5l-2.2 8.2L21 19l-9.5-2.8L3 17.5V13.5z"/><path d="M11.5 12.3V19"/></svg></span>
                         <span class="fr-hub-txt">Борт</span>
                         <span class="fr-hub-desc">політ і привʼязка до треку</span>
                     </button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="filters">
-                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16l-6.2 7.2V19l-3.6 2v-8.8L4 5z"/></svg></span>
-                        <span class="fr-hub-txt">Фільтри карти</span>
-                        <span class="fr-hub-desc">шари · період · райони</span>
-                    </button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="coords">
-                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3"/><path d="M12 8.2l1.4 2.6 2.9.5-2 2.1.4 2.9L12 14.8l-2.7 1.5.4-2.9-2-2.1 2.9-.5L12 8.2z"/></svg></span>
-                        <span class="fr-hub-txt">Координати</span>
-                        <span class="fr-hub-desc">DD / DM / DMS / MGRS</span>
-                    </button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="catalog">
-                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5h11.5A2.5 2.5 0 0 1 19 7v12.5H7.5A2.5 2.5 0 0 0 5 22"/><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H19"/><path d="M9 9h7M9 13h7M9 17h4"/></svg></span>
-                        <span class="fr-hub-txt">Каталоги</span>
-                        <span class="fr-hub-desc">довідники збиття і засобів</span>
-                    </button>
-                    <button type="button" class="fr-hub-tile" data-fr-acc="io">
-                        <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V3l-4 4 4 4V7h8"/><path d="M16 17v4l4-4-4-4v4H8"/></svg></span>
-                        <span class="fr-hub-txt">Експорт / імпорт</span>
-                        <span class="fr-hub-desc">TXT · JSON · GeoJSON</span>
-                    </button>
+                    <button type="button" class="fr-hub-more-btn" id="fr-hub-more-toggle" aria-expanded="false">Ще ▾</button>
+                    <div class="fr-hub-more" id="fr-hub-more">
+                        <button type="button" class="fr-hub-tile" data-fr-acc="points">
+                            <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 19s5-3.8 5-8a5 5 0 1 0-10 0c0 4.2 5 8 5 8z"/><circle cx="8" cy="11" r="1.6"/><path d="M17 20s4-3 4-6.5a4 4 0 1 0-8 0c0 3.5 4 6.5 4 6.5z"/><circle cx="17" cy="13.5" r="1.3"/></svg></span>
+                            <span class="fr-hub-txt">Точки збиття</span>
+                            <span class="fr-hub-desc">точки, висота, кольори</span>
+                        </button>
+                        <button type="button" class="fr-hub-tile" data-fr-acc="corridor">
+                            <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5l4 14M20 5l-4 14"/><path d="M8 8h8M7 12h10M6 16h12" stroke-dasharray="2.5 2.5"/></svg></span>
+                            <span class="fr-hub-txt">Коридор</span>
+                            <span class="fr-hub-desc">смуга видимих точок</span>
+                        </button>
+                        <button type="button" class="fr-hub-tile" data-fr-acc="filters">
+                            <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16l-6.2 7.2V19l-3.6 2v-8.8L4 5z"/></svg></span>
+                            <span class="fr-hub-txt">Фільтри карти</span>
+                            <span class="fr-hub-desc">шари · період · райони</span>
+                        </button>
+                        <button type="button" class="fr-hub-tile" data-fr-acc="coords">
+                            <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3"/><path d="M12 8.2l1.4 2.6 2.9.5-2 2.1.4 2.9L12 14.8l-2.7 1.5.4-2.9-2-2.1 2.9-.5L12 8.2z"/></svg></span>
+                            <span class="fr-hub-txt">Координати</span>
+                            <span class="fr-hub-desc">DD / DM / DMS / MGRS</span>
+                        </button>
+                        <button type="button" class="fr-hub-tile" data-fr-acc="catalog">
+                            <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5h11.5A2.5 2.5 0 0 1 19 7v12.5H7.5A2.5 2.5 0 0 0 5 22"/><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H19"/><path d="M9 9h7M9 13h7M9 17h4"/></svg></span>
+                            <span class="fr-hub-txt">Каталоги</span>
+                            <span class="fr-hub-desc">довідники збиття і засобів</span>
+                        </button>
+                        <button type="button" class="fr-hub-tile" data-fr-acc="io">
+                            <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7V3l-4 4 4 4V7h8"/><path d="M16 17v4l4-4-4-4v4H8"/></svg></span>
+                            <span class="fr-hub-txt">Експорт / імпорт</span>
+                            <span class="fr-hub-desc">TXT · JSON · GeoJSON</span>
+                        </button>
+                    </div>
                 </div>
                 <button type="button" class="fr-back" id="fr-hub-back" style="display:none">← Назад до меню</button>
 
@@ -6069,6 +6081,15 @@ function formatCoord(lat, lon, format) {
         syncQuickBar();
         panel.classList.add('fr-hub-mode');
         document.getElementById('fr-hub')?.addEventListener('click', (e) => {
+            const moreBtn = e.target?.closest?.('#fr-hub-more-toggle');
+            if (moreBtn && panel.contains(moreBtn)) {
+                e.preventDefault();
+                const hub = document.getElementById('fr-hub');
+                const open = hub?.classList.toggle('fr-hub-expanded');
+                moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+                moreBtn.textContent = open ? 'Сховати ▴' : 'Ще ▾';
+                return;
+            }
             const tile = e.target?.closest?.('.fr-hub-tile');
             if (!tile || !panel.contains(tile)) return;
             openAccSection(tile.getAttribute('data-fr-acc'));
