@@ -414,14 +414,7 @@
             if (found) return found;
         }
 
-        const elements = document.querySelectorAll('div');
-        for (const el of elements) {
-            const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber$'));
-            if (!fiberKey) continue;
-            const found = findGoogleMapInFiber(el[fiberKey]);
-            if (found) return found;
-        }
-
+        // НЕ скануємо всі div — це блокує головний потік і карта «не грузиться»
         return null;
     }
 
@@ -433,26 +426,17 @@
         if (window.mapViewer?.entities) return window.mapViewer;
         if (window.Cesium?.Viewer?.instances?.[0]?.entities) return window.Cesium.Viewer.instances[0];
 
-        const elements = document.querySelectorAll('div, canvas');
-        for (const el of elements) {
-            if (el.cesiumViewer?.entities) return el.cesiumViewer;
-            if (el._cesiumViewer?.entities) return el._cesiumViewer;
-
-            const reactKeys = Object.keys(el).filter(k =>
-                k.startsWith('__reactFiber$') || k.startsWith('__reactProps$')
-            );
-            for (const rKey of reactKeys) {
-                let node = el[rKey];
-                let depth = 0;
-                while (node && depth < 20) {
-                    if (node.memoizedProps?.viewer?.entities) return node.memoizedProps.viewer;
-                    if (node.stateNode?.viewer?.entities) return node.stateNode.viewer;
-                    if (node.memoizedProps?.cesiumViewer?.entities) return node.memoizedProps.cesiumViewer;
-                    node = node.return;
-                    depth++;
-                }
+        // Легкий пошук лише по canvas (без обходу всіх div/fiber)
+        try {
+            const canvases = document.querySelectorAll('canvas');
+            for (const el of canvases) {
+                if (el.cesiumViewer?.entities) return el.cesiumViewer;
+                if (el._cesiumViewer?.entities) return el._cesiumViewer;
+                const parent = el.parentElement;
+                if (parent?.cesiumViewer?.entities) return parent.cesiumViewer;
+                if (parent?._cesiumViewer?.entities) return parent._cesiumViewer;
             }
-        }
+        } catch (_) { /* ignore */ }
         return null;
     }
 
@@ -846,7 +830,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'free-line-62';
+    const FR_BUILD = 'map-boot-fix-63';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -919,12 +903,24 @@ function formatCoord(lat, lon, format) {
         return true;
     }
 
-    // Спроба рано, поки карта вже крутить треки
-    installHostTrackSpy();
-    const _spyTimer = setInterval(() => {
-        if (installHostTrackSpy()) clearInterval(_spyTimer);
-    }, 500);
-    setTimeout(() => clearInterval(_spyTimer), 60000);
+    // Spy ставимо ПІСЛЯ появи карти (див. initApp) — інакше обгортка Marker
+    // під час boot Maps може зламати завантаження тайлів.
+    let _spyTimer = 0;
+    function scheduleHostTrackSpy() {
+        try { if (installHostTrackSpy()) return; } catch (_) { /* ignore */ }
+        if (_spyTimer) return;
+        _spyTimer = setInterval(() => {
+            try {
+                if (installHostTrackSpy()) {
+                    clearInterval(_spyTimer);
+                    _spyTimer = 0;
+                }
+            } catch (_) { /* ignore */ }
+        }, 1500);
+        setTimeout(() => {
+            if (_spyTimer) { clearInterval(_spyTimer); _spyTimer = 0; }
+        }, 60000);
+    }
 
     function latLonFromGooglePos(pos) {
         if (!pos) return null;
@@ -1328,7 +1324,7 @@ function formatCoord(lat, lon, format) {
         let analyticsEs = null;
         let roadRouteSeq = 0;
 
-        installHostTrackSpy();
+        scheduleHostTrackSpy();
         window.__FR_hostTracks = () => {
             try {
                 if (mapType === 'google') {
@@ -8070,12 +8066,7 @@ function formatCoord(lat, lon, format) {
                 } catch (_) { /* ignore */ }
                 try { root.querySelectorAll?.('div, ul, menu, section, aside, nav').forEach(tryKill); } catch (_) { /* ignore */ }
             }
-            try {
-                document.querySelectorAll('div, ul, menu, section, aside').forEach((el) => {
-                    if (el.childElementCount > 40) return;
-                    tryKill(el);
-                });
-            } catch (_) { /* ignore */ }
+            // Повний скан DOM прибрано — він блокував карту при великій кількості вузлів
         }
 
         function scheduleKillHostCoordMenus(force) {
@@ -8191,19 +8182,14 @@ function formatCoord(lat, lon, format) {
                     m.addedNodes.forEach((n) => {
                         if (n.nodeType === 1) { killHostCoordMenus(n); hit = true; }
                     });
-                    if (m.type === 'attributes' && m.target?.nodeType === 1) {
-                        killHostCoordMenus(m.target);
-                        hit = true;
-                    }
                 }
                 if (hit) scheduleKillHostCoordMenus(false);
             });
             try {
+                // без attributes — інакше кожен кадр карти/тайлів гальмує головний потік
                 mo.observe(document.body, {
                     childList: true,
-                    subtree: true,
-                    attributes: true,
-                    attributeFilter: ['style', 'class', 'hidden', 'aria-hidden']
+                    subtree: true
                 });
                 window.__frHostMenuObserver = mo;
             } catch (_) { /* ignore */ }
@@ -8386,13 +8372,25 @@ function formatCoord(lat, lon, format) {
             if (lp) lp.checked = false;
             if (sp) sp.checked = false;
         } catch (_) { /* ignore */ }
-        refreshUI();
-        renderAnalytics();
+        refreshUI({ immediate: true });
         renderZones();
-        listenToCloudUpdates();
-        listenToFlights();
-        listenToAnalytics();
-        if (timestampsRepaired) pushToFirebase(poiStore);
+        // Важкий sync/рендер — після idle, щоб карта встигла завантажити тайли
+        const deferHeavy = () => {
+            try {
+                renderAnalytics();
+                listenToCloudUpdates();
+                listenToFlights();
+                listenToAnalytics();
+                if (timestampsRepaired) pushToFirebase(poiStore);
+            } catch (err) {
+                console.warn('[FALCONROUTE] deferred init failed', err);
+            }
+        };
+        if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(() => deferHeavy(), { timeout: 2500 });
+        } else {
+            setTimeout(deferHeavy, 800);
+        }
         console.log(`🦅 FALCONROUTE v2 завантажено! (${mapType === 'google' ? 'Google Maps / R2D2' : 'Cesium'}) — аналітика/дороги/синхрон`);
     }
 
@@ -8401,6 +8399,12 @@ function formatCoord(lat, lon, format) {
     document.getElementById('falcon-route-license')?.remove();
     document.getElementById('falcon-route-blocked')?.remove();
     ensureLicensed().then((ok) => {
-        if (ok) boot(0);
+        if (ok) {
+            try { boot(0); } catch (err) {
+                console.error('[FALCONROUTE] boot crashed', err);
+            }
+        }
+    }).catch((err) => {
+        console.error('[FALCONROUTE] license/boot failed', err);
     });
 })();
