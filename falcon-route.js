@@ -846,7 +846,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'grid-line-61';
+    const FR_BUILD = 'free-line-62';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1315,6 +1315,7 @@ function formatCoord(lat, lon, format) {
         let isAnaNoteMode = false;
         let isAnaRoadMode = false;
         let isAnaGridMode = false;
+        let isAnaFreeMode = false;
         let isAnaDeleteMode = false;
         let isAnaBanMode = false;
         let anaTargetListener = null;
@@ -2006,7 +2007,7 @@ function formatCoord(lat, lon, format) {
                 <details class="fr-acc" data-fr-acc="analytics">
                     <summary><span class="fr-acc-title">Аналітика</span></summary>
                     <div class="fr-acc-body">
-                        <div class="fr-hint">T ціль · G заборона · W дорога · сітка пунктиром · D видалити</div>
+                        <div class="fr-hint">T ціль · W дорога · вільна лінія · сітка пунктиром · D видалити</div>
                         <div class="fr-field-grid">
                             <div class="fr-field">
                                 <label for="fr-ana-text">Текст</label>
@@ -2024,10 +2025,13 @@ function formatCoord(lat, lon, format) {
                         </div>
                         <div class="fr-grid-3">
                             <button class="fr-btn fr-btn-pick" id="fr-ana-road">Дорога [W]</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-free">Вільна</button>
                             <button class="fr-btn fr-btn-pick" id="fr-ana-grid">Сітка</button>
-                            <button class="fr-btn fr-btn-pick" id="fr-ana-note">Мітка</button>
                         </div>
-                        <button class="fr-btn fr-btn-wide" id="fr-ana-road-finish">Застосувати лінію</button>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-note">Мітка</button>
+                            <button class="fr-btn" id="fr-ana-road-finish">Застосувати</button>
+                        </div>
                         <div class="fr-row" style="min-height:auto;gap:6px">
                             <label for="fr-ana-road-op" style="white-space:nowrap">Проз. дороги</label>
                             <input type="number" id="fr-ana-road-op" value="0.4" min="0.15" max="0.85" step="0.05" style="width:72px;margin-left:auto">
@@ -6295,7 +6299,16 @@ function formatCoord(lat, lon, format) {
                 setAnaStatus('Режим видалення: клацни ціль / мітку / дорогу на карті або ✕ у списку', false);
                 return;
             }
-            if (isAnaRoadMode || isAnaGridMode) {
+            if (isAnaFreeMode) {
+                const n = (roadDraft.path || []).length;
+                if (n < 2) {
+                    setAnaStatus('Вільна лінія: клікай точки на карті (як дорога, без автомаршруту)', false);
+                } else {
+                    setAnaStatus(`Вільна лінія: ${n} точок · ще клік додає · Enter / «Застосувати»`, false);
+                }
+                return;
+            }
+            if (isAnaRoadMode || isAnaGridMode || isAnaFreeMode) {
                 const label = isAnaGridMode ? 'Сітка' : 'Дорога';
                 if (!roadDraft.start) {
                     setAnaStatus(label + ': клацни ПОЧАТОК', false);
@@ -6958,14 +6971,16 @@ function formatCoord(lat, lon, format) {
 
         function renderAnaDraft() {
             clearAnaDraftOverlays();
-            if (!isAnaRoadMode && !isAnaGridMode) return;
+            if (!isAnaRoadMode && !isAnaGridMode && !isAnaFreeMode) return;
             const color = anaColor() || (isAnaGridMode ? '#94a3b8' : '#fbbf24');
             const opacity = anaRoadOpacity();
             const dashed = isAnaGridMode || roadDraft.lineKind === 'grid';
             const path = (roadDraft.path && roadDraft.path.length >= 2)
                 ? roadDraft.path
                 : syncDraftRoadPoints();
-            const anchors = syncDraftRoadPoints();
+            const anchors = (isAnaFreeMode || roadDraft.lineKind === 'free')
+                ? (roadDraft.path || []).slice()
+                : syncDraftRoadPoints();
             if (mapType === 'google') {
                 if (path.length >= 2) {
                     if (dashed) {
@@ -6986,7 +7001,9 @@ function formatCoord(lat, lon, format) {
                     }
                 }
                 anchors.forEach((p, idx) => {
-                    const label = idx === 0 ? 'A' : (idx === anchors.length - 1 && roadDraft.end ? 'B' : String(idx));
+                    const label = (isAnaFreeMode || roadDraft.lineKind === 'free')
+                        ? String(idx + 1)
+                        : (idx === 0 ? 'A' : (idx === anchors.length - 1 && roadDraft.end ? 'B' : String(idx)));
                     const m = new google.maps.Marker({
                         map,
                         position: { lat: p.lat, lng: p.lon },
@@ -7047,7 +7064,8 @@ function formatCoord(lat, lon, format) {
             });
             Object.values(analyticsStore.roads || {}).forEach((r) => {
                 const n = Array.isArray(r.path) ? r.path.length : 0;
-                rows.push({ kind: 'roads', id: r.id, label: `Дорога`, sub: `${n} тчк` });
+                const free = r.type === 'free' || r.mode === 'free';
+                rows.push({ kind: 'roads', id: r.id, label: free ? `〰 Вільна лінія` : `Дорога`, sub: `${n} тчк` });
             });
             Object.values(analyticsStore.grids || {}).forEach((r) => {
                 const n = Array.isArray(r.path) ? r.path.length : 0;
@@ -7264,10 +7282,16 @@ function formatCoord(lat, lon, format) {
                     }
                     isAnaRoadMode = false;
                     isAnaGridMode = false;
+                    isAnaFreeMode = false;
                     const btn = document.getElementById('fr-ana-road');
                     if (btn) {
                         btn.classList.remove('active');
                         btn.textContent = 'Дорога [W]';
+                    }
+                    const fbtn = document.getElementById('fr-ana-free');
+                    if (fbtn) {
+                        fbtn.classList.remove('active');
+                        fbtn.textContent = 'Вільна';
                     }
                     const gbtn = document.getElementById('fr-ana-grid');
                     if (gbtn) {
@@ -7515,32 +7539,44 @@ function formatCoord(lat, lon, format) {
             const road = analyticsStore[k]?.[id];
             if (!road) return;
             openAccSection('analytics');
+            const isFree = k === 'roads' && (road.type === 'free' || road.mode === 'free');
             if (k === 'grids') {
                 if (!isAnaGridMode) beginAnaGridDraw();
+            } else if (isFree) {
+                if (!isAnaFreeMode) beginAnaFreeDraw();
             } else if (!isAnaRoadMode) {
                 beginAnaRoadDraw();
             }
             roadDraft.editingId = id;
-            roadDraft.lineKind = k === 'grids' ? 'grid' : 'road';
-            roadDraft.start = road.start || (road.path && road.path[0]) || null;
-            roadDraft.end = road.end || (road.path && road.path[road.path.length - 1]) || null;
-            roadDraft.vias = Array.isArray(road.vias) ? road.vias.slice() : [];
-            roadDraft.path = Array.isArray(road.path) ? road.path.slice() : [];
+            roadDraft.lineKind = k === 'grids' ? 'grid' : (isFree ? 'free' : 'road');
+            if (isFree) {
+                roadDraft.path = Array.isArray(road.path) ? road.path.slice() : [];
+                roadDraft.start = roadDraft.path[0] || null;
+                roadDraft.end = roadDraft.path.length > 1 ? roadDraft.path[roadDraft.path.length - 1] : null;
+                roadDraft.vias = [];
+            } else {
+                roadDraft.start = road.start || (road.path && road.path[0]) || null;
+                roadDraft.end = road.end || (road.path && road.path[road.path.length - 1]) || null;
+                roadDraft.vias = Array.isArray(road.vias) ? road.vias.slice() : [];
+                roadDraft.path = Array.isArray(road.path) ? road.path.slice() : [];
+            }
             syncDraftRoadPoints();
             renderAnaDraft();
             refreshAnaStatus();
-            setAnaStatus((k === 'grids' ? 'Редагування сітки' : 'Редагування дороги') + ': клікай точки коригування або «Застосувати»', false);
+            const label = k === 'grids' ? 'сітки' : (isFree ? 'вільної лінії' : 'дороги');
+            setAnaStatus('Редагування ' + label + ': клікай точки або «Застосувати»', false);
         }
 
         function beginLineDraw(lineKind) {
             const isGrid = lineKind === 'grid';
+            const isFree = lineKind === 'free';
             cancelMapModesForAnalytics();
             clearAnaListener('target');
             clearAnaListener('reserve');
             clearAnaListener('note');
             clearAnaListener('delete');
             clearAnaListener('ban');
-            const already = isGrid ? isAnaGridMode : isAnaRoadMode;
+            const already = isFree ? isAnaFreeMode : (isGrid ? isAnaGridMode : isAnaRoadMode);
             if (already) {
                 clearAnaListener('road');
                 resetRoadDraft();
@@ -7550,19 +7586,31 @@ function formatCoord(lat, lon, format) {
                 return;
             }
             clearAnaListener('road');
-            isAnaRoadMode = !isGrid;
+            isAnaRoadMode = !isGrid && !isFree;
             isAnaGridMode = isGrid;
+            isAnaFreeMode = isFree;
             resetRoadDraft();
-            roadDraft.lineKind = isGrid ? 'grid' : 'road';
-            const btn = document.getElementById(isGrid ? 'fr-ana-grid' : 'fr-ana-road');
+            roadDraft.lineKind = isFree ? 'free' : (isGrid ? 'grid' : 'road');
+            const btnId = isFree ? 'fr-ana-free' : (isGrid ? 'fr-ana-grid' : 'fr-ana-road');
+            const btn = document.getElementById(btnId);
             if (btn) {
                 btn.classList.add('active');
-                btn.textContent = isGrid ? 'Сітка A→B…' : 'A → B…';
+                btn.textContent = isFree ? 'Клікай точки…' : (isGrid ? 'Сітка A→B…' : 'A → B…');
             }
             refreshAnaStatus();
             syncQuickBar();
             const onPick = (lat, lon) => {
                 const pt = { lat, lon };
+                if (isFree || roadDraft.lineKind === 'free') {
+                    if (!Array.isArray(roadDraft.path)) roadDraft.path = [];
+                    roadDraft.path.push(pt);
+                    if (!roadDraft.start) roadDraft.start = pt;
+                    roadDraft.end = pt;
+                    syncDraftRoadPoints();
+                    renderAnaDraft();
+                    refreshAnaStatus();
+                    return;
+                }
                 if (!roadDraft.start) {
                     roadDraft.start = pt;
                     syncDraftRoadPoints();
@@ -7598,12 +7646,27 @@ function formatCoord(lat, lon, format) {
             beginLineDraw('road');
         }
 
+        function beginAnaFreeDraw() {
+            beginLineDraw('free');
+        }
+
         function beginAnaGridDraw() {
             beginLineDraw('grid');
         }
 
         function undoRoadPoint() {
-            if (!isAnaRoadMode && !isAnaGridMode) return;
+            if (!isAnaRoadMode && !isAnaGridMode && !isAnaFreeMode) return;
+            if (isAnaFreeMode || roadDraft.lineKind === 'free') {
+                if (Array.isArray(roadDraft.path) && roadDraft.path.length) {
+                    roadDraft.path.pop();
+                    roadDraft.start = roadDraft.path[0] || null;
+                    roadDraft.end = roadDraft.path.length ? roadDraft.path[roadDraft.path.length - 1] : null;
+                    syncDraftRoadPoints();
+                    renderAnaDraft();
+                    refreshAnaStatus();
+                }
+                return;
+            }
             if (roadDraft.vias && roadDraft.vias.length) {
                 roadDraft.vias.pop();
                 if (roadDraft.end) rebuildRoadRoute();
@@ -7631,25 +7694,31 @@ function formatCoord(lat, lon, format) {
         }
 
         function finishAnaRoad() {
-            if (!isAnaRoadMode && !isAnaGridMode) return;
+            if (!isAnaRoadMode && !isAnaGridMode && !isAnaFreeMode) return;
             const isGrid = isAnaGridMode || roadDraft.lineKind === 'grid';
+            const isFree = isAnaFreeMode || roadDraft.lineKind === 'free';
             const kind = isGrid ? 'grids' : 'roads';
             const path = (roadDraft.path && roadDraft.path.length >= 2)
                 ? roadDraft.path.slice()
                 : syncDraftRoadPoints();
             if (path.length < 2) {
-                setAnaStatus(isGrid ? 'Потрібно початок і кінець сітки' : 'Потрібно початок і кінець дороги', false);
+                setAnaStatus(
+                    isFree ? 'Потрібно мінімум 2 точки вільної лінії'
+                        : (isGrid ? 'Потрібно початок і кінець сітки' : 'Потрібно початок і кінець дороги'),
+                    false
+                );
                 return;
             }
             const item = {
-                id: roadDraft.editingId || anaNewId(isGrid ? 'grid' : 'road'),
+                id: roadDraft.editingId || anaNewId(isFree ? 'free' : (isGrid ? 'grid' : 'road')),
                 path,
                 color: anaColor() || (isGrid ? '#94a3b8' : '#fbbf24'),
                 opacity: isGrid ? Math.max(0.5, anaRoadOpacity()) : anaRoadOpacity(),
-                start: roadDraft.start,
-                end: roadDraft.end,
-                vias: (roadDraft.vias || []).slice(),
-                type: isGrid ? 'grid' : 'road',
+                start: path[0],
+                end: path[path.length - 1],
+                vias: isFree ? [] : (roadDraft.vias || []).slice(),
+                type: isFree ? 'free' : (isGrid ? 'grid' : 'road'),
+                mode: isFree ? 'free' : (isGrid ? 'grid' : 'routed'),
                 createdBy: CLIENT_ID,
                 createdAt: Date.now()
             };
@@ -7660,7 +7729,7 @@ function formatCoord(lat, lon, format) {
             clearAnaDraftOverlays();
             renderAnalytics();
             pushAnalyticsItem(kind, item);
-            setAnaStatus(isGrid ? 'Сітку збережено' : 'Дорогу збережено', false);
+            setAnaStatus(isFree ? 'Вільну лінію збережено' : (isGrid ? 'Сітку збережено' : 'Дорогу збережено'), false);
         }
 
         function findNearestAnalyticsHit(lat, lon, maxM) {
@@ -7821,6 +7890,7 @@ function formatCoord(lat, lon, format) {
             document.getElementById('fr-ana-note')?.addEventListener('click', () => beginAnaNotePlace());
             document.getElementById('fr-ana-ban')?.addEventListener('click', () => beginAnaBanPlace());
             document.getElementById('fr-ana-road')?.addEventListener('click', () => beginAnaRoadDraw());
+            document.getElementById('fr-ana-free')?.addEventListener('click', () => beginAnaFreeDraw());
             document.getElementById('fr-ana-grid')?.addEventListener('click', () => beginAnaGridDraw());
             document.getElementById('fr-ana-road-finish')?.addEventListener('click', () => finishAnaRoad());
             document.getElementById('fr-ana-road-undo')?.addEventListener('click', () => undoRoadPoint());
@@ -7832,10 +7902,10 @@ function formatCoord(lat, lon, format) {
                 clearAllAnalytics();
             });
             document.getElementById('fr-ana-road-op')?.addEventListener('change', () => {
-                if (isAnaRoadMode || isAnaGridMode) renderAnaDraft();
+                if (isAnaRoadMode || isAnaGridMode || isAnaFreeMode) renderAnaDraft();
             });
             document.getElementById('fr-ana-color')?.addEventListener('input', () => {
-                if (isAnaRoadMode || isAnaGridMode) renderAnaDraft();
+                if (isAnaRoadMode || isAnaGridMode || isAnaFreeMode) renderAnaDraft();
             });
         }
 
@@ -7851,6 +7921,7 @@ function formatCoord(lat, lon, format) {
                 isAnaNoteMode ||
                 isAnaRoadMode ||
                 isAnaGridMode ||
+                isAnaFreeMode ||
                 isAnaDeleteMode ||
                 isAnaBanMode ||
                 isPlaceAircraftMode ||
@@ -8170,9 +8241,9 @@ function formatCoord(lat, lon, format) {
                     const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
                     const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable;
                     if (typing) {
-                        if (e.key === 'Enter' && (isAnaRoadMode || isAnaGridMode) && tag === 'input' && e.target.id === 'fr-ana-text') {
+                        if (e.key === 'Enter' && (isAnaRoadMode || isAnaGridMode || isAnaFreeMode) && tag === 'input' && e.target.id === 'fr-ana-text') {
                             /* allow */
-                        } else if (e.key === 'Enter' && (isAnaRoadMode || isAnaGridMode)) {
+                        } else if (e.key === 'Enter' && (isAnaRoadMode || isAnaGridMode || isAnaFreeMode)) {
                             e.preventDefault();
                             finishAnaRoad();
                             return;
@@ -8180,13 +8251,13 @@ function formatCoord(lat, lon, format) {
                             return;
                         }
                     }
-                    if (e.key === 'Enter' && (isAnaRoadMode || isAnaGridMode)) {
+                    if (e.key === 'Enter' && (isAnaRoadMode || isAnaGridMode || isAnaFreeMode)) {
                         e.preventDefault();
                         finishAnaRoad();
                         return;
                     }
                     if (e.key === 'Escape') {
-                        if (isAnaTargetMode || isAnaReserveMode || isAnaNoteMode || isAnaRoadMode || isAnaGridMode || isAnaDeleteMode || isAnaBanMode) {
+                        if (isAnaTargetMode || isAnaReserveMode || isAnaNoteMode || isAnaRoadMode || isAnaGridMode || isAnaFreeMode || isAnaDeleteMode || isAnaBanMode) {
                             e.preventDefault();
                             stopAnalyticsModes();
                         }
