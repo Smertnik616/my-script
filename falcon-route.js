@@ -830,7 +830,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'map-boot-fix-63';
+    const FR_BUILD = 'tool-smooth-64';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -7937,13 +7937,12 @@ function formatCoord(lat, lon, format) {
                 restoreSuppressedHostMenus();
                 return;
             }
-            if (isFrMapToolActive()) {
-                scheduleKillHostCoordMenus(false);
-            } else {
+            if (!isFrMapToolActive()) {
                 // інструмент вимкнено — повернути сховані меню хоста
                 restoreSuppressedHostMenus();
                 window.__frHostMenuKillGen = (window.__frHostMenuKillGen || 0) + 1;
             }
+            // під час інструмента НЕ ганяємо kill на кожен syncQuickBar — лише UI-стан
         }
 
         function syncHostLmbToggleUi() {
@@ -8053,37 +8052,48 @@ function formatCoord(lat, lon, format) {
         function killHostCoordMenus(root) {
             const tryKill = (el) => {
                 if (!isHostCoordMenuEl(el)) return false;
-                // НЕ remove() батьківські контейнери хоста — лише ховаємо (відновимо на «дозв.»)
                 return suppressHostMenuEl(el);
             };
             if (root && root.nodeType === 1) {
                 tryKill(root);
                 try {
                     let p = root.parentElement;
-                    for (let i = 0; p && i < 4; i++, p = p.parentElement) {
+                    for (let i = 0; p && i < 3; i++, p = p.parentElement) {
                         if (tryKill(p)) break;
                     }
                 } catch (_) { /* ignore */ }
-                try { root.querySelectorAll?.('div, ul, menu, section, aside, nav').forEach(tryKill); } catch (_) { /* ignore */ }
+                // лише прямі діти — без querySelectorAll по всьому піддереву
+                try {
+                    const kids = root.children || [];
+                    for (let i = 0; i < kids.length && i < 30; i++) tryKill(kids[i]);
+                } catch (_) { /* ignore */ }
+                return;
             }
-            // Повний скан DOM прибрано — він блокував карту при великій кількості вузлів
+            // без root: лише top-level попапи в body (дешево)
+            try {
+                const kids = document.body?.children || [];
+                for (let i = 0; i < kids.length; i++) {
+                    const el = kids[i];
+                    if (!el || el.id === 'falcon-route-ui') continue;
+                    tryKill(el);
+                }
+            } catch (_) { /* ignore */ }
         }
 
+        let _anaKillTimer = 0;
         function scheduleKillHostCoordMenus(force) {
             if (!isHostLmbBlockEnabled()) return;
             if (!isFrMapToolActive()) return;
-            const gen = window.__frHostMenuKillGen || 0;
-            const run = () => {
-                if (gen !== (window.__frHostMenuKillGen || 0)) return;
+            // один відкладений прохід замість зливи таймерів (вона й глючила інструменти)
+            if (_anaKillTimer) {
+                if (!force) return;
+                clearTimeout(_anaKillTimer);
+            }
+            _anaKillTimer = setTimeout(() => {
+                _anaKillTimer = 0;
                 if (!isHostLmbBlockEnabled() || !isFrMapToolActive()) return;
                 killHostCoordMenus();
-            };
-            run();
-            try { requestAnimationFrame(run); } catch (_) { /* ignore */ }
-            (force
-                ? [0, 40, 120, 280]
-                : [0, 60, 180]
-            ).forEach((ms) => setTimeout(run, ms));
+            }, force ? 30 : 120);
         }
 
         function getMapRootForHostGuard() {
@@ -8127,6 +8137,7 @@ function formatCoord(lat, lon, format) {
             } catch (_) { /* ignore */ }
             restoreSuppressedHostMenus();
             window.__frHostMenuKillGen = (window.__frHostMenuKillGen || 0) + 1;
+            try { if (_anaKillTimer) { clearTimeout(_anaKillTimer); _anaKillTimer = 0; } } catch (_) {}
         }
 
         function setupHostMenuBlockers() {
@@ -8134,67 +8145,37 @@ function formatCoord(lat, lon, format) {
 
             const shouldBlock = () => isHostLmbBlockEnabled() && isFrMapToolActive();
 
+            // Легкий guard: НЕ stopPropagation на карті (ламає інструменти Maps/Cesium),
+            // лише глушимо contextmenu і рідко ховаємо coord-меню хоста.
             const onPtr = (e) => {
-                if (e.target?.closest?.('#falcon-route-ui')) return;
-                if (!shouldBlock()) {
-                    // без активного інструмента — меню хоста штатне
-                    if (e.type === 'mousedown' || e.type === 'pointerdown') {
-                        restoreSuppressedHostMenus();
-                    }
-                    return;
-                }
-                if (e.type !== 'contextmenu') {
-                    if (e.button != null && e.button !== 0) return;
-                } else {
+                if (e.target?.closest?.('#falcon-route-ui, .fr-ana-label, .fr-ana-chip')) return;
+                if (!shouldBlock()) return;
+                if (e.type === 'contextmenu') {
                     e.preventDefault();
                     e.stopPropagation();
+                    return;
                 }
-                scheduleKillHostCoordMenus(false);
+                if (e.type === 'click' && (e.button == null || e.button === 0)) {
+                    scheduleKillHostCoordMenus(false);
+                }
             };
             window.__frHostMenuPtrHandler = onPtr;
-            ['mousedown', 'mouseup', 'click', 'auxclick', 'contextmenu', 'pointerdown', 'pointerup'].forEach((ev) => {
-                window.addEventListener(ev, onPtr, true);
-            });
+            window.addEventListener('click', onPtr, true);
+            window.addEventListener('contextmenu', onPtr, true);
 
-            try {
-                const mapRoot = getMapRootForHostGuard();
-                if (mapRoot) {
-                    const bubbleStop = (e) => {
-                        if (!shouldBlock()) return;
-                        if (e.target?.closest?.('#falcon-route-ui')) return;
-                        if (e.button != null && e.button !== 0) return;
-                        e.stopPropagation();
-                        scheduleKillHostCoordMenus(true);
-                    };
-                    ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup'].forEach((ev) => {
-                        mapRoot.addEventListener(ev, bubbleStop, false);
-                    });
-                    window.__frHostMenuBubbleStop = bubbleStop;
-                    window.__frHostMenuMapRoot = mapRoot;
-                    mapRoot.__frHostMenuBubbleStop = bubbleStop;
-                }
-            } catch (_) { /* ignore */ }
-
+            // Observer лише на прямі додавання в body (попапи), без subtree по всій карті
             const mo = new MutationObserver((muts) => {
                 if (!shouldBlock()) return;
-                let hit = false;
                 for (const m of muts) {
                     m.addedNodes.forEach((n) => {
-                        if (n.nodeType === 1) { killHostCoordMenus(n); hit = true; }
+                        if (n.nodeType === 1) killHostCoordMenus(n);
                     });
                 }
-                if (hit) scheduleKillHostCoordMenus(false);
             });
             try {
-                // без attributes — інакше кожен кадр карти/тайлів гальмує головний потік
-                mo.observe(document.body, {
-                    childList: true,
-                    subtree: true
-                });
+                mo.observe(document.body, { childList: true, subtree: false });
                 window.__frHostMenuObserver = mo;
             } catch (_) { /* ignore */ }
-
-            if (shouldBlock()) scheduleKillHostCoordMenus(true);
         }
 
         /** Увімкнути/вимкнути перехоплення згідно з кнопкою */
