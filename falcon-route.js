@@ -851,12 +851,128 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'host-lbz-67';
+    const FR_BUILD = 'deepstate-lbz-68';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
     const hostAdvancedRegistry = new Set();
     const hostLineRegistry = new Set(); // Polyline / Polygon з карти-хоста (ЛБЗ тощо)
+
+    const DEEPSTATE_LBZ_URL = 'https://deepstatemap.live/api/history/last';
+    const deepstateLbz = {
+        status: 'idle', // idle | loading | ok | err
+        id: null,
+        datetime: '',
+        fetchedAt: 0,
+        paths: [],
+        error: '',
+        _inflight: null
+    };
+
+    function isDeepstateFrontFeature(feature) {
+        const name = String(feature?.properties?.name || feature?.properties?.Name || '');
+        const n = name.toLowerCase().replace(/\s+/g, ' ');
+        // Основна ЛБЗ / окупація в Україні + сіра/невідома зона
+        if (n.includes('geojson.status.occupied')) return true;
+        if (n.includes('geojson.status.unknown')) return true;
+        if (n.includes('geojson.territories.ordlo')) return true;
+        if (n.includes('geojson.territories.crimea')) return true;
+        if (n.includes('geojson.territories.tuzla')) return true;
+        return false;
+    }
+
+    function pushDeepstateRing(ring, out) {
+        if (!Array.isArray(ring) || ring.length < 2) return;
+        const path = [];
+        for (let i = 0; i < ring.length; i++) {
+            const c = ring[i];
+            if (!Array.isArray(c) || c.length < 2) continue;
+            const lon = Number(c[0]);
+            const lat = Number(c[1]);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+            // знімаємо дубль підряд
+            const prev = path[path.length - 1];
+            if (prev && Math.abs(prev.lat - lat) < 1e-9 && Math.abs(prev.lon - lon) < 1e-9) continue;
+            path.push({ lat, lon });
+        }
+        if (path.length >= 2) out.push(path);
+    }
+
+    function extractDeepstateGeometryPaths(geom, out) {
+        if (!geom || !geom.type) return;
+        const t = geom.type;
+        const coords = geom.coordinates;
+        if (t === 'Polygon' && Array.isArray(coords)) {
+            coords.forEach((ring) => pushDeepstateRing(ring, out));
+        } else if (t === 'MultiPolygon' && Array.isArray(coords)) {
+            coords.forEach((poly) => {
+                if (!Array.isArray(poly)) return;
+                poly.forEach((ring) => pushDeepstateRing(ring, out));
+            });
+        } else if (t === 'LineString' && Array.isArray(coords)) {
+            pushDeepstateRing(coords, out);
+        } else if (t === 'MultiLineString' && Array.isArray(coords)) {
+            coords.forEach((line) => pushDeepstateRing(line, out));
+        }
+    }
+
+    function parseDeepstateLbzPayload(data) {
+        const fc = data?.map || data;
+        const features = Array.isArray(fc?.features) ? fc.features : [];
+        const paths = [];
+        features.forEach((f) => {
+            if (!isDeepstateFrontFeature(f)) return;
+            if (f?.geometry?.type === 'Point') return;
+            extractDeepstateGeometryPaths(f.geometry, paths);
+        });
+        return {
+            id: data?.id ?? null,
+            datetime: String(data?.datetime || '').trim(),
+            paths
+        };
+    }
+
+    async function fetchDeepstateLbz(force = false) {
+        const maxAge = 30 * 60 * 1000; // 30 хв
+        if (!force && deepstateLbz.status === 'ok' && deepstateLbz.paths.length
+            && (Date.now() - deepstateLbz.fetchedAt) < maxAge) {
+            return deepstateLbz;
+        }
+        if (deepstateLbz._inflight) return deepstateLbz._inflight;
+
+        deepstateLbz.status = 'loading';
+        deepstateLbz.error = '';
+        const job = (async () => {
+            try {
+                const res = await fetch(DEEPSTATE_LBZ_URL, {
+                    cache: 'no-store',
+                    headers: { Accept: 'application/json' }
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                const parsed = parseDeepstateLbzPayload(data);
+                if (!parsed.paths.length) throw new Error('порожня геометрія ЛБЗ');
+                deepstateLbz.id = parsed.id;
+                deepstateLbz.datetime = parsed.datetime;
+                deepstateLbz.paths = parsed.paths;
+                deepstateLbz.fetchedAt = Date.now();
+                deepstateLbz.status = 'ok';
+                deepstateLbz.error = '';
+                console.log('[FALCONROUTE] DeepState LBZ', deepstateLbz.datetime || deepstateLbz.id,
+                    'rings', deepstateLbz.paths.length);
+                return deepstateLbz;
+            } catch (err) {
+                deepstateLbz.status = 'err';
+                deepstateLbz.error = String(err?.message || err);
+                console.warn('[FALCONROUTE] DeepState LBZ fetch failed', err);
+                return deepstateLbz;
+            } finally {
+                deepstateLbz._inflight = null;
+            }
+        })();
+        deepstateLbz._inflight = job;
+        return job;
+    }
 
     function markOwnOverlay(obj) {
         try {
@@ -2175,13 +2291,16 @@ function formatCoord(lat, lon, format) {
                             <button class="fr-btn fr-btn-pick" id="fr-aim-place">Ціль</button>
                             <button class="fr-btn fr-btn-danger" id="fr-aim-clear">Скинути ціль</button>
                         </div>
-                        <div class="fr-hint">«Ціль» — від борта до точки. «Сіра зона» — просто постав точку на карті: лінія сама піде до найближчої ЛБЗ, яка вже є на карті (малювати сітку не треба).</div>
+                        <div class="fr-hint">«Сіра зона» — скрипт сам тягне актуальну ЛБЗ з DeepState. Просто постав точку: лінія піде до найближчої точки ЛБЗ.</div>
                         <div class="fr-status muted" id="fr-aim-status">Ціль не задана</div>
                         <div class="fr-grid">
                             <button class="fr-btn fr-btn-pick" id="fr-lbz-place">Сіра зона</button>
-                            <button class="fr-btn fr-btn-danger" id="fr-lbz-clear">Скинути</button>
+                            <button class="fr-btn" id="fr-lbz-refresh">Оновити ЛБЗ</button>
                         </div>
-                        <div class="fr-status muted" id="fr-lbz-status">Точка за ЛБЗ не задана</div>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-danger" id="fr-lbz-clear">Скинути точку</button>
+                        </div>
+                        <div class="fr-status muted" id="fr-lbz-status">DeepState ЛБЗ ще не завантажена</div>
                         <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ruler-clear">Скинути лінійку</button>
                         <div class="fr-status muted" id="fr-ruler-status">Лінійка не задана</div>
                     </div>
@@ -3047,9 +3166,18 @@ function formatCoord(lat, lon, format) {
 
         function collectLbzPaths() {
             const paths = [];
-            // 1) ЛБЗ уже на карті-хості — основне джерело
+            // 1) Актуальна ЛБЗ з DeepState — головне джерело
+            if (deepstateLbz.status === 'ok' && deepstateLbz.paths.length) {
+                deepstateLbz.paths.forEach((path, i) => {
+                    if (Array.isArray(path) && path.length >= 2) {
+                        paths.push({ id: 'deepstate-' + i, path, kind: 'deepstate', score: pathScore(path) });
+                    }
+                });
+                return paths;
+            }
+            // 2) запас: лінії вже на карті-хості
             collectHostLbzPaths().forEach((p) => paths.push(p));
-            // 2) запасний варіант — наша сітка / вільна лінія
+            // 3) запас: наша сітка / вільна лінія
             Object.keys(analyticsStore?.grids || {}).forEach((id) => {
                 const path = analyticsStore.grids[id]?.path;
                 if (Array.isArray(path) && path.length >= 2) paths.push({ id, path, kind: 'grid', score: pathScore(path) });
@@ -3063,6 +3191,29 @@ function formatCoord(lat, lon, format) {
                 if (Array.isArray(path) && path.length >= 2) paths.push({ id, path, kind: 'free', score: pathScore(path) });
             });
             return paths;
+        }
+
+        function deepstateStatusText() {
+            if (deepstateLbz.status === 'loading') return 'DeepState: завантаження ЛБЗ…';
+            if (deepstateLbz.status === 'ok') {
+                const when = deepstateLbz.datetime || 'ок';
+                return `DeepState ЛБЗ · ${when} · кілець ${deepstateLbz.paths.length}`;
+            }
+            if (deepstateLbz.status === 'err') return 'DeepState недоступний · ' + (deepstateLbz.error || 'помилка');
+            return 'DeepState ЛБЗ ще не завантажена';
+        }
+
+        async function ensureDeepstateLbz(force = false) {
+            setLbzStatus(force ? 'Оновлення DeepState…' : 'Завантаження ЛБЗ з DeepState…', false);
+            await fetchDeepstateLbz(force);
+            if (deepstateLbz.status === 'ok') {
+                setLbzStatus(deepstateStatusText() + (lbzProbe ? ' · точка стоїть' : ' · постав точку'), false);
+                if (lbzProbe) updateLbzMeasure();
+            } else {
+                setLbzStatus(deepstateStatusText() + ' · спробую лінії з карти', true);
+                if (lbzProbe) updateLbzMeasure();
+            }
+            return deepstateLbz;
         }
 
         function findNearestLbz(lat, lon) {
@@ -3118,7 +3269,7 @@ function formatCoord(lat, lon, format) {
                         }
                     }));
                 }
-                setLbzStatus('ЛБЗ на карті не знайдено. Увімкни шар ЛБЗ/сірої зони на карті або намалюй «Сітка / ЛБЗ»', true);
+                setLbzStatus('ЛБЗ не знайдено. Натисни «Оновити ЛБЗ» (DeepState) або увімкни шар на карті', true);
                 return;
             }
 
@@ -3133,7 +3284,7 @@ function formatCoord(lat, lon, format) {
             const distM = lbzHit.distM;
             const eta = formatTravelTime(distM, speed);
             const labelText = `До сірої зони: ${formatDistanceKm(distM)} · ETA ${eta}`;
-            setLbzStatus(`${labelText} · ${speed} км/год`, false);
+            setLbzStatus(`${labelText} · ${speed} км/год` + (lbzHit?.kind === 'deepstate' ? ' · DeepState' : ''), false);
             const mid = {
                 lat: (lbzProbe.lat + lbzHit.lat) / 2,
                 lon: (lbzProbe.lon + lbzHit.lon) / 2
@@ -3278,13 +3429,25 @@ function formatCoord(lat, lon, format) {
                 btn.classList.add('active');
                 btn.textContent = 'Клацни точку…';
             }
-            setLbzStatus('Клацни на карті — лінія до найближчої ЛБЗ на карті', false);
+            setLbzStatus('Готую ЛБЗ з DeepState… потім клацни точку', false);
             syncQuickBar();
             refreshHostLmbToolGate();
+            ensureDeepstateLbz(false).then(() => {
+                if (!isLbzPlaceMode) return;
+                setLbzStatus(
+                    (deepstateLbz.status === 'ok'
+                        ? (deepstateStatusText() + ' · клацни точку на карті')
+                        : 'Клацни точку — пошук ЛБЗ на карті / запасні джерела'),
+                    deepstateLbz.status !== 'ok'
+                );
+            });
 
-            const onPick = (lat, lon) => {
+            const onPick = async (lat, lon) => {
                 lbzProbe = { lat, lon };
                 stopLbzPlaceMode();
+                if (deepstateLbz.status !== 'ok' || !deepstateLbz.paths.length) {
+                    await ensureDeepstateLbz(false);
+                }
                 updateLbzMeasure();
             };
 
@@ -4921,6 +5084,9 @@ function formatCoord(lat, lon, format) {
         document.getElementById('fr-aim-clear').onclick = () => clearAimTarget();
         document.getElementById('fr-lbz-place').onclick = () => beginLbzPlace();
         document.getElementById('fr-lbz-clear').onclick = () => clearLbzProbe();
+        document.getElementById('fr-lbz-refresh').onclick = () => {
+            ensureDeepstateLbz(true).catch(() => {});
+        };
 
         document.getElementById('fr-ruler-clear').onclick = () => {
             if (isRulerMode) stopRulerMode();
@@ -8895,6 +9061,12 @@ function formatCoord(lat, lon, format) {
                 listenToFlights();
                 listenToAnalytics();
                 if (timestampsRepaired) pushToFirebase(poiStore);
+                fetchDeepstateLbz(false).then(() => {
+                    try {
+                        const el = document.getElementById('fr-lbz-status');
+                        if (el && !lbzProbe) setLbzStatus(deepstateStatusText(), deepstateLbz.status !== 'ok');
+                    } catch (_) { /* ignore */ }
+                }).catch(() => {});
             } catch (err) {
                 console.warn('[FALCONROUTE] deferred init failed', err);
             }

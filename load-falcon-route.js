@@ -21,7 +21,9 @@
                 text.includes('fr-ana-road') &&
                 text.includes('fr-lbz-place') &&
                 text.includes('До сірої зони') &&
-                text.includes('collectHostLbzPaths')
+                text.includes('collectHostLbzPaths') &&
+                text.includes('fetchDeepstateLbz') &&
+                text.includes('deepstatemap.live')
             ) {
                 code = text;
                 break;
