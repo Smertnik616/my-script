@@ -792,6 +792,27 @@ function formatCoord(lat, lon, format) {
         return haversineM(lat, lon, projLat, projLon);
     }
 
+
+    /** Найближча точка на відрізку + відстань у метрах */
+    function nearestOnSegment(lat, lon, aLat, aLon, bLat, bLon) {
+        const toXY = (la, lo) => {
+            const x = toRad(lo - aLon) * Math.cos(toRad((la + aLat) / 2)) * 6371000;
+            const y = toRad(la - aLat) * 6371000;
+            return { x, y };
+        };
+        const p = toXY(lat, lon);
+        const b = toXY(bLat, bLon);
+        const len2 = b.x * b.x + b.y * b.y;
+        if (len2 === 0) {
+            return { lat: aLat, lon: aLon, distM: haversineM(lat, lon, aLat, aLon) };
+        }
+        let t = (p.x * b.x + p.y * b.y) / len2;
+        t = Math.max(0, Math.min(1, t));
+        const projLat = aLat + t * (bLat - aLat);
+        const projLon = aLon + t * (bLon - aLon);
+        return { lat: projLat, lon: projLon, distM: haversineM(lat, lon, projLat, projLon) };
+    }
+
     function pointInCorridor(pt, corridor, widthM) {
         if (!corridor || corridor.length < 2) return true;
         const half = (widthM || 2000) / 2;
@@ -830,7 +851,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'tool-smooth-64';
+    const FR_BUILD = 'lbz-ruler-65';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1265,6 +1286,11 @@ function formatCoord(lat, lon, format) {
         let aimTrack = null;
         let isAimPlaceMode = false;
         let aimPlaceListener = null;
+        let lbzProbe = null; // { lat, lon } — точка виміру до ЛБЗ / сірої зони
+        let lbzHit = null; // { lat, lon, distM }
+        let lbzOverlays = [];
+        let isLbzPlaceMode = false;
+        let lbzPlaceListener = null;
         let isPickMode = false;
         let isCoordPickMode = false;
         let isCorridorMode = false;
@@ -1993,8 +2019,13 @@ function formatCoord(lat, lon, format) {
                             <button class="fr-btn fr-btn-pick" id="fr-aim-place">Ціль</button>
                             <button class="fr-btn fr-btn-danger" id="fr-aim-clear">Скинути ціль</button>
                         </div>
-                        <div class="fr-hint">«Ціль» — постав точку на карті; від твого борта піде лінія з відстанню та часом (за швидкістю лінійки).</div>
+                        <div class="fr-hint">«Ціль» — від борта до точки. «До ЛБЗ» — від поставленої точки до найближчої сітки (початок сірої зони).</div>
                         <div class="fr-status muted" id="fr-aim-status">Ціль не задана</div>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-pick" id="fr-lbz-place">До ЛБЗ</button>
+                            <button class="fr-btn fr-btn-danger" id="fr-lbz-clear">Скинути ЛБЗ</button>
+                        </div>
+                        <div class="fr-status muted" id="fr-lbz-status">Точка до ЛБЗ не задана</div>
                         <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ruler-clear">Скинути лінійку</button>
                         <div class="fr-status muted" id="fr-ruler-status">Лінійка не задана</div>
                     </div>
@@ -2003,7 +2034,7 @@ function formatCoord(lat, lon, format) {
                 <details class="fr-acc" data-fr-acc="analytics">
                     <summary><span class="fr-acc-title">Аналітика</span></summary>
                     <div class="fr-acc-body">
-                        <div class="fr-hint">T ціль · W дорога · вільна лінія · сітка пунктиром · D видалити</div>
+                        <div class="fr-hint">T ціль · W дорога · вільна · сітка/ЛБЗ · D видалити</div>
                         <div class="fr-field-grid">
                             <div class="fr-field">
                                 <label for="fr-ana-text">Текст</label>
@@ -2022,7 +2053,7 @@ function formatCoord(lat, lon, format) {
                         <div class="fr-grid-3">
                             <button class="fr-btn fr-btn-pick" id="fr-ana-road">Дорога [W]</button>
                             <button class="fr-btn fr-btn-pick" id="fr-ana-free">Вільна</button>
-                            <button class="fr-btn fr-btn-pick" id="fr-ana-grid">Сітка</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-ana-grid" title="ЛБЗ / початок сірої зони">Сітка / ЛБЗ</button>
                         </div>
                         <div class="fr-grid">
                             <button class="fr-btn fr-btn-pick" id="fr-ana-note">Мітка</button>
@@ -2129,7 +2160,7 @@ function formatCoord(lat, lon, format) {
                             <label class="fr-layer"><input type="checkbox" id="fr-layer-targets" ${settings.layerTargets !== false ? 'checked' : ''}> Цілі</label>
                             <label class="fr-layer"><input type="checkbox" id="fr-layer-reserves" ${settings.layerReserves !== false ? 'checked' : ''}> Резервні цілі</label>
                             <label class="fr-layer"><input type="checkbox" id="fr-layer-roads" ${settings.layerRoads !== false ? 'checked' : ''}> Дороги</label>
-                            <label class="fr-layer"><input type="checkbox" id="fr-layer-grids" ${settings.layerGrids !== false ? 'checked' : ''}> Сітка</label>
+                            <label class="fr-layer"><input type="checkbox" id="fr-layer-grids" ${settings.layerGrids !== false ? 'checked' : ''}> Сітка / ЛБЗ</label>
                             <label class="fr-layer"><input type="checkbox" id="fr-layer-notes" ${settings.layerNotes !== false ? 'checked' : ''}> Мітки</label>
                             <label class="fr-layer"><input type="checkbox" id="fr-layer-bans" ${settings.layerBans !== false ? 'checked' : ''}> Заборони</label>
                         </div>
@@ -2783,6 +2814,303 @@ function formatCoord(lat, lon, format) {
             setAimStatus('Ціль не задана', true);
         }
 
+
+        function setLbzStatus(text, muted = true) {
+            const el = document.getElementById('fr-lbz-status');
+            if (!el) return;
+            el.textContent = text || '';
+            el.classList.toggle('muted', !!muted);
+        }
+
+        function clearLbzOverlays() {
+            try {
+                if (mapType === 'google') {
+                    lbzOverlays.forEach(o => {
+                        try { o.setMap(null); } catch (_) { /* ignore */ }
+                    });
+                } else {
+                    lbzOverlays.forEach(ent => {
+                        try { map.entities.remove(ent); } catch (_) { /* ignore */ }
+                    });
+                }
+            } catch (_) { /* ignore */ }
+            lbzOverlays = [];
+        }
+
+        function stopLbzPlaceMode() {
+            isLbzPlaceMode = false;
+            const btn = document.getElementById('fr-lbz-place');
+            if (btn) {
+                btn.classList.remove('active');
+                btn.textContent = 'До ЛБЗ';
+            }
+            if (lbzPlaceListener) {
+                if (mapType === 'google') google.maps.event.removeListener(lbzPlaceListener);
+                else if (map.canvas) map.canvas.removeEventListener('click', lbzPlaceListener);
+                lbzPlaceListener = null;
+            }
+            syncQuickBar();
+            refreshHostLmbToolGate();
+        }
+
+        function clearLbzProbe() {
+            stopLbzPlaceMode();
+            lbzProbe = null;
+            lbzHit = null;
+            clearLbzOverlays();
+            setLbzStatus('Точка до ЛБЗ не задана', true);
+        }
+
+        function collectLbzPaths() {
+            const paths = [];
+            const grids = analyticsStore?.grids || {};
+            Object.keys(grids).forEach((id) => {
+                const g = grids[id];
+                const path = g?.path;
+                if (Array.isArray(path) && path.length >= 2) paths.push({ id, path, kind: 'grid' });
+            });
+            return paths;
+        }
+
+        function findNearestLbz(lat, lon) {
+            let best = null;
+            collectLbzPaths().forEach(({ id, path, kind }) => {
+                for (let i = 0; i < path.length - 1; i++) {
+                    const a = path[i];
+                    const b = path[i + 1];
+                    if (!a || !b) continue;
+                    if (!Number.isFinite(a.lat) || !Number.isFinite(a.lon) || !Number.isFinite(b.lat) || !Number.isFinite(b.lon)) continue;
+                    const hit = nearestOnSegment(lat, lon, a.lat, a.lon, b.lat, b.lon);
+                    if (!best || hit.distM < best.distM) {
+                        best = { lat: hit.lat, lon: hit.lon, distM: hit.distM, id, kind };
+                    }
+                }
+            });
+            return best;
+        }
+
+        function updateLbzMeasure() {
+            if (!lbzProbe) {
+                clearLbzOverlays();
+                return;
+            }
+            const paths = collectLbzPaths();
+            if (!paths.length) {
+                clearLbzOverlays();
+                // show only probe marker
+                if (mapType === 'google') {
+                    lbzOverlays.push(new google.maps.Marker({
+                        position: { lat: lbzProbe.lat, lng: lbzProbe.lon },
+                        map,
+                        title: 'Точка до ЛБЗ',
+                        zIndex: 196,
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 7,
+                            fillColor: '#eab308',
+                            fillOpacity: 0.95,
+                            strokeColor: '#fefce8',
+                            strokeWeight: 2
+                        }
+                    }));
+                } else {
+                    lbzOverlays.push(map.entities.add({
+                        position: Cesium.Cartesian3.fromDegrees(lbzProbe.lon, lbzProbe.lat),
+                        point: {
+                            pixelSize: 12,
+                            color: toCesiumColor('#eab308'),
+                            outlineColor: toCesiumColor('#fefce8'),
+                            outlineWidth: 2,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY
+                        }
+                    }));
+                }
+                setLbzStatus('Немає сітки (ЛБЗ) — намалюй «Сітка» в Аналітиці', true);
+                return;
+            }
+
+            lbzHit = findNearestLbz(lbzProbe.lat, lbzProbe.lon);
+            if (!lbzHit) {
+                clearLbzOverlays();
+                setLbzStatus('Не вдалося знайти ЛБЗ', true);
+                return;
+            }
+
+            const speed = getRulerSpeed();
+            const distM = lbzHit.distM;
+            const eta = formatTravelTime(distM, speed);
+            const labelText = `До ЛБЗ: ${formatDistanceKm(distM)} · ETA ${eta}`;
+            setLbzStatus(`${labelText} · ${speed} км/год`, false);
+            const mid = {
+                lat: (lbzProbe.lat + lbzHit.lat) / 2,
+                lon: (lbzProbe.lon + lbzHit.lon) / 2
+            };
+
+            clearLbzOverlays();
+            if (mapType === 'google') {
+                lbzOverlays.push(new google.maps.Marker({
+                    position: { lat: lbzProbe.lat, lng: lbzProbe.lon },
+                    map,
+                    title: 'Точка до ЛБЗ',
+                    zIndex: 196,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 7,
+                        fillColor: '#eab308',
+                        fillOpacity: 0.95,
+                        strokeColor: '#fefce8',
+                        strokeWeight: 2
+                    }
+                }));
+                lbzOverlays.push(new google.maps.Marker({
+                    position: { lat: lbzHit.lat, lng: lbzHit.lon },
+                    map,
+                    title: 'Найближча ЛБЗ',
+                    zIndex: 195,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 5,
+                        fillColor: '#64748b',
+                        fillOpacity: 0.95,
+                        strokeColor: '#e2e8f0',
+                        strokeWeight: 2
+                    }
+                }));
+                const line = new google.maps.Polyline({
+                    path: [
+                        { lat: lbzProbe.lat, lng: lbzProbe.lon },
+                        { lat: lbzHit.lat, lng: lbzHit.lon }
+                    ],
+                    map,
+                    strokeColor: '#eab308',
+                    strokeOpacity: 0,
+                    strokeWeight: 2,
+                    zIndex: 190,
+                    icons: [{
+                        icon: {
+                            path: 'M 0,-1 0,1',
+                            strokeOpacity: 1,
+                            strokeColor: '#eab308',
+                            scale: 3
+                        },
+                        offset: '0',
+                        repeat: '10px'
+                    }]
+                });
+                markOwnOverlay(line);
+                lbzOverlays.push(line);
+                const lab = createGoogleAimLabel(
+                    new google.maps.LatLng(mid.lat, mid.lon),
+                    labelText
+                );
+                lbzOverlays.push(lab);
+            } else {
+                const Cartesian3 = Cesium.Cartesian3;
+                lbzOverlays.push(map.entities.add({
+                    position: Cartesian3.fromDegrees(lbzProbe.lon, lbzProbe.lat),
+                    point: {
+                        pixelSize: 12,
+                        color: toCesiumColor('#eab308'),
+                        outlineColor: toCesiumColor('#fefce8'),
+                        outlineWidth: 2,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                }));
+                lbzOverlays.push(map.entities.add({
+                    position: Cartesian3.fromDegrees(lbzHit.lon, lbzHit.lat),
+                    point: {
+                        pixelSize: 9,
+                        color: toCesiumColor('#64748b'),
+                        outlineColor: toCesiumColor('#e2e8f0'),
+                        outlineWidth: 2,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                }));
+                lbzOverlays.push(map.entities.add({
+                    polyline: {
+                        positions: [
+                            Cartesian3.fromDegrees(lbzProbe.lon, lbzProbe.lat),
+                            Cartesian3.fromDegrees(lbzHit.lon, lbzHit.lat)
+                        ],
+                        width: 2,
+                        material: new Cesium.PolylineDashMaterialProperty({
+                            color: toCesiumColor('#eab308'),
+                            dashLength: 12
+                        }),
+                        clampToGround: true
+                    }
+                }));
+                lbzOverlays.push(map.entities.add({
+                    position: Cartesian3.fromDegrees(mid.lon, mid.lat),
+                    label: {
+                        text: labelText,
+                        font: 'bold 12px sans-serif',
+                        fillColor: toCesiumColor('#fefce8'),
+                        outlineColor: toCesiumColor('#713f12'),
+                        outlineWidth: 4,
+                        style: Cesium?.LabelStyle?.FILL_AND_OUTLINE,
+                        showBackground: false,
+                        pixelOffset: Cesium?.Cartesian2
+                            ? new Cesium.Cartesian2(0, -14)
+                            : undefined,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                }));
+                map.scene?.requestRender?.();
+            }
+        }
+
+        function beginLbzPlace() {
+            if (isPickMode) stopPickMode();
+            if (isCoordPickMode) stopCoordPickMode();
+            if (isCorridorMode) stopCorridorMode(false);
+            if (isRulerMode) stopRulerMode();
+            if (isAimPlaceMode) stopAimPlaceMode();
+            stopAnalyticsModes();
+            stopAircraftModes();
+            if (isAttachPickMode) {
+                clearAttachPickListener();
+                updateAttachBtn();
+            }
+
+            if (isLbzPlaceMode) {
+                stopLbzPlaceMode();
+                setLbzStatus(lbzProbe ? 'Точка стоїть на карті' : 'Точка до ЛБЗ не задана', !lbzProbe);
+                return;
+            }
+
+            isLbzPlaceMode = true;
+            const btn = document.getElementById('fr-lbz-place');
+            if (btn) {
+                btn.classList.add('active');
+                btn.textContent = 'Клацни точку…';
+            }
+            setLbzStatus('Клацни на карті — виміряємо до найближчої ЛБЗ (сітки)', false);
+            syncQuickBar();
+            refreshHostLmbToolGate();
+
+            const onPick = (lat, lon) => {
+                lbzProbe = { lat, lon };
+                stopLbzPlaceMode();
+                updateLbzMeasure();
+            };
+
+            if (mapType === 'google') {
+                lbzPlaceListener = map.addListener('click', (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                });
+            } else if (map.canvas) {
+                lbzPlaceListener = (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                };
+                map.canvas.addEventListener('click', lbzPlaceListener);
+            }
+        }
+
         function createGoogleAimLabel(position, text) {
             class FrAimLabel extends google.maps.OverlayView {
                 constructor() {
@@ -3012,6 +3340,7 @@ function formatCoord(lat, lon, format) {
             if (isCoordPickMode) stopCoordPickMode();
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
+            if (isLbzPlaceMode) stopLbzPlaceMode();
             stopAnalyticsModes();
             stopAircraftModes();
             if (isAttachPickMode) {
@@ -4157,6 +4486,7 @@ function formatCoord(lat, lon, format) {
             if (isRulerMode) stopRulerMode();
             if (isCoordPickMode) stopCoordPickMode();
             if (isAimPlaceMode) stopAimPlaceMode();
+            if (isLbzPlaceMode) stopLbzPlaceMode();
             stopAnalyticsModes();
             stopAircraftModes();
             if (isPickMode) {
@@ -4198,6 +4528,7 @@ function formatCoord(lat, lon, format) {
             if (isRulerMode) stopRulerMode();
             if (isPickMode) stopPickMode();
             if (isAimPlaceMode) stopAimPlaceMode();
+            if (isLbzPlaceMode) stopLbzPlaceMode();
             stopAnalyticsModes();
             stopAircraftModes();
             const coordPickBtn = document.getElementById('fr-coord-pick');
@@ -4294,6 +4625,7 @@ function formatCoord(lat, lon, format) {
             if (isCoordPickMode) stopCoordPickMode();
             if (isRulerMode) stopRulerMode();
             if (isAimPlaceMode) stopAimPlaceMode();
+            if (isLbzPlaceMode) stopLbzPlaceMode();
             if (isZoneDrawMode) stopZoneDrawMode(false);
             stopAnalyticsModes();
             stopAircraftModes();
@@ -4353,6 +4685,7 @@ function formatCoord(lat, lon, format) {
             if (isCoordPickMode) stopCoordPickMode();
             if (isCorridorMode) stopCorridorMode(false);
             if (isAimPlaceMode) stopAimPlaceMode();
+            if (isLbzPlaceMode) stopLbzPlaceMode();
             stopAnalyticsModes();
             stopAircraftModes();
 
@@ -4393,6 +4726,8 @@ function formatCoord(lat, lon, format) {
 
         document.getElementById('fr-aim-place').onclick = () => beginAimPlace();
         document.getElementById('fr-aim-clear').onclick = () => clearAimTarget();
+        document.getElementById('fr-lbz-place').onclick = () => beginLbzPlace();
+        document.getElementById('fr-lbz-clear').onclick = () => clearLbzProbe();
 
         document.getElementById('fr-ruler-clear').onclick = () => {
             if (isRulerMode) stopRulerMode();
@@ -6045,6 +6380,7 @@ function formatCoord(lat, lon, format) {
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
             if (isAimPlaceMode) stopAimPlaceMode();
+            if (isLbzPlaceMode) stopLbzPlaceMode();
             stopAnalyticsModes();
             if (isPlaneAttached) detachFromHostTrack(true);
             if (isAttachPickMode) {
@@ -6305,7 +6641,7 @@ function formatCoord(lat, lon, format) {
                 return;
             }
             if (isAnaRoadMode || isAnaGridMode || isAnaFreeMode) {
-                const label = isAnaGridMode ? 'Сітка' : 'Дорога';
+                const label = isAnaGridMode ? 'Сітка / ЛБЗ' : 'Дорога';
                 if (!roadDraft.start) {
                     setAnaStatus(label + ': клацни ПОЧАТОК', false);
                 } else if (!roadDraft.end) {
@@ -6843,6 +7179,7 @@ function formatCoord(lat, lon, format) {
             renderAnaList();
             refreshAnaStatus();
             syncQuickBar();
+            if (lbzProbe) updateLbzMeasure();
         }
 
         function syncDraftRoadPoints() {
@@ -6955,7 +7292,7 @@ function formatCoord(lat, lon, format) {
                     // fallback: straight segments through anchors
                     path = anchors.slice();
                     if (seq === roadRouteSeq) {
-                        setAnaStatus((isAnaGridMode ? 'Сітка' : 'Дорога') + ': автомаршрут недоступний — прямі відрізки.', false);
+                        setAnaStatus((isAnaGridMode ? 'Сітка / ЛБЗ' : 'Дорога') + ': автомаршрут недоступний — прямі відрізки.', false);
                     }
                 }
             }
@@ -7065,7 +7402,7 @@ function formatCoord(lat, lon, format) {
             });
             Object.values(analyticsStore.grids || {}).forEach((r) => {
                 const n = Array.isArray(r.path) ? r.path.length : 0;
-                rows.push({ kind: 'grids', id: r.id, label: `▤ Сітка`, sub: `${n} тчк` });
+                rows.push({ kind: 'grids', id: r.id, label: `▤ ЛБЗ`, sub: `${n} тчк` });
             });
             Object.values(analyticsStore.notes || {}).forEach((n) => {
                 rows.push({ kind: 'notes', id: n.id, label: `${(n.type === 'ban' || n.kind === 'ban') ? (n.text || 'Заборона') : (n.text || 'Мітка')}`, sub: `${n.lat?.toFixed?.(5)}, ${n.lon?.toFixed?.(5)}` });
@@ -7292,7 +7629,7 @@ function formatCoord(lat, lon, format) {
                     const gbtn = document.getElementById('fr-ana-grid');
                     if (gbtn) {
                         gbtn.classList.remove('active');
-                        gbtn.textContent = 'Сітка';
+                        gbtn.textContent = 'Сітка / ЛБЗ';
                     }
                 },
                 delete: () => {
@@ -7357,6 +7694,7 @@ function formatCoord(lat, lon, format) {
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
             if (isAimPlaceMode) stopAimPlaceMode();
+            if (isLbzPlaceMode) stopLbzPlaceMode();
             stopAircraftModes();
             if (isAttachPickMode) {
                 clearAttachPickListener();
@@ -7591,7 +7929,7 @@ function formatCoord(lat, lon, format) {
             const btn = document.getElementById(btnId);
             if (btn) {
                 btn.classList.add('active');
-                btn.textContent = isFree ? 'Клікай точки…' : (isGrid ? 'Сітка A→B…' : 'A → B…');
+                btn.textContent = isFree ? 'Клікай точки…' : (isGrid ? 'ЛБЗ A→B…' : 'A → B…');
             }
             refreshAnaStatus();
             syncQuickBar();
@@ -7912,6 +8250,7 @@ function formatCoord(lat, lon, format) {
                 isPickMode ||
                 isCorridorMode ||
                 isAimPlaceMode ||
+                isLbzPlaceMode ||
                 isAnaTargetMode ||
                 isAnaReserveMode ||
                 isAnaNoteMode ||
