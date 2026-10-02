@@ -18,7 +18,9 @@
                 text.includes('FALCONROUTE v2') &&
                 text.includes('fr-flight-place') &&
                 text.includes('fr-ana-target') &&
-                text.includes('fr-ana-road')
+                text.includes('fr-ana-road') &&
+                text.includes('fr-lbz-place') &&
+                text.includes('До сірої зони')
             ) {
                 code = text;
                 break;
@@ -32,5 +34,6 @@
     const s = document.createElement('script');
     s.textContent = code + '\n//# sourceURL=falcon-route-v2.js';
     document.documentElement.appendChild(s);
-    console.log('🦅 FalconRoute v2 OK (analytics)');
+    const build = (code.match(/FR_BUILD\s*=\s*'([^']+)'/) || [])[1] || '?';
+    console.log('🦅 FalconRoute v2 OK', build);
 })();

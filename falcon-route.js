@@ -851,7 +851,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'lbz-ruler-65';
+    const FR_BUILD = 'grayzone-66';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -2019,13 +2019,13 @@ function formatCoord(lat, lon, format) {
                             <button class="fr-btn fr-btn-pick" id="fr-aim-place">Ціль</button>
                             <button class="fr-btn fr-btn-danger" id="fr-aim-clear">Скинути ціль</button>
                         </div>
-                        <div class="fr-hint">«Ціль» — від борта до точки. «До ЛБЗ» — від поставленої точки до найближчої сітки (початок сірої зони).</div>
+                        <div class="fr-hint">«Ціль» — від борта до точки. «Сіра зона» — постав точку ЗА ЛБЗ; від неї піде лінія до початку сірої зони (найближча сітка/ЛБЗ).</div>
                         <div class="fr-status muted" id="fr-aim-status">Ціль не задана</div>
                         <div class="fr-grid">
-                            <button class="fr-btn fr-btn-pick" id="fr-lbz-place">До ЛБЗ</button>
-                            <button class="fr-btn fr-btn-danger" id="fr-lbz-clear">Скинути ЛБЗ</button>
+                            <button class="fr-btn fr-btn-pick" id="fr-lbz-place">Сіра зона</button>
+                            <button class="fr-btn fr-btn-danger" id="fr-lbz-clear">Скинути</button>
                         </div>
-                        <div class="fr-status muted" id="fr-lbz-status">Точка до ЛБЗ не задана</div>
+                        <div class="fr-status muted" id="fr-lbz-status">Точка за ЛБЗ не задана</div>
                         <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ruler-clear">Скинути лінійку</button>
                         <div class="fr-status muted" id="fr-ruler-status">Лінійка не задана</div>
                     </div>
@@ -2842,7 +2842,7 @@ function formatCoord(lat, lon, format) {
             const btn = document.getElementById('fr-lbz-place');
             if (btn) {
                 btn.classList.remove('active');
-                btn.textContent = 'До ЛБЗ';
+                btn.textContent = 'Сіра зона';
             }
             if (lbzPlaceListener) {
                 if (mapType === 'google') google.maps.event.removeListener(lbzPlaceListener);
@@ -2858,16 +2858,24 @@ function formatCoord(lat, lon, format) {
             lbzProbe = null;
             lbzHit = null;
             clearLbzOverlays();
-            setLbzStatus('Точка до ЛБЗ не задана', true);
+            setLbzStatus('Точка за ЛБЗ не задана', true);
         }
 
         function collectLbzPaths() {
             const paths = [];
-            const grids = analyticsStore?.grids || {};
-            Object.keys(grids).forEach((id) => {
-                const g = grids[id];
-                const path = g?.path;
+            // Сітка = ЛБЗ / початок сірої зони
+            Object.keys(analyticsStore?.grids || {}).forEach((id) => {
+                const path = analyticsStore.grids[id]?.path;
                 if (Array.isArray(path) && path.length >= 2) paths.push({ id, path, kind: 'grid' });
+            });
+            // Вільна лінія теж може бути межею сірої зони
+            Object.keys(analyticsStore?.roads || {}).forEach((id) => {
+                const road = analyticsStore.roads[id];
+                if (!road) return;
+                const isFree = road.type === 'free' || road.mode === 'free' || road.lineKind === 'free';
+                if (!isFree) return;
+                const path = road.path;
+                if (Array.isArray(path) && path.length >= 2) paths.push({ id, path, kind: 'free' });
             });
             return paths;
         }
@@ -2902,7 +2910,7 @@ function formatCoord(lat, lon, format) {
                     lbzOverlays.push(new google.maps.Marker({
                         position: { lat: lbzProbe.lat, lng: lbzProbe.lon },
                         map,
-                        title: 'Точка до ЛБЗ',
+                        title: 'Точка за ЛБЗ',
                         zIndex: 196,
                         icon: {
                             path: google.maps.SymbolPath.CIRCLE,
@@ -2925,21 +2933,21 @@ function formatCoord(lat, lon, format) {
                         }
                     }));
                 }
-                setLbzStatus('Немає сітки (ЛБЗ) — намалюй «Сітка» в Аналітиці', true);
+                setLbzStatus('Немає сітки/ЛБЗ — намалюй «Сітка / ЛБЗ» в Аналітиці', true);
                 return;
             }
 
             lbzHit = findNearestLbz(lbzProbe.lat, lbzProbe.lon);
             if (!lbzHit) {
                 clearLbzOverlays();
-                setLbzStatus('Не вдалося знайти ЛБЗ', true);
+                setLbzStatus('Не вдалося знайти початок сірої зони', true);
                 return;
             }
 
             const speed = getRulerSpeed();
             const distM = lbzHit.distM;
             const eta = formatTravelTime(distM, speed);
-            const labelText = `До ЛБЗ: ${formatDistanceKm(distM)} · ETA ${eta}`;
+            const labelText = `До сірої зони: ${formatDistanceKm(distM)} · ETA ${eta}`;
             setLbzStatus(`${labelText} · ${speed} км/год`, false);
             const mid = {
                 lat: (lbzProbe.lat + lbzHit.lat) / 2,
@@ -2951,7 +2959,7 @@ function formatCoord(lat, lon, format) {
                 lbzOverlays.push(new google.maps.Marker({
                     position: { lat: lbzProbe.lat, lng: lbzProbe.lon },
                     map,
-                    title: 'Точка до ЛБЗ',
+                    title: 'Точка за ЛБЗ',
                     zIndex: 196,
                     icon: {
                         path: google.maps.SymbolPath.CIRCLE,
@@ -2965,7 +2973,7 @@ function formatCoord(lat, lon, format) {
                 lbzOverlays.push(new google.maps.Marker({
                     position: { lat: lbzHit.lat, lng: lbzHit.lon },
                     map,
-                    title: 'Найближча ЛБЗ',
+                    title: 'Початок сірої зони',
                     zIndex: 195,
                     icon: {
                         path: google.maps.SymbolPath.CIRCLE,
@@ -3075,7 +3083,7 @@ function formatCoord(lat, lon, format) {
 
             if (isLbzPlaceMode) {
                 stopLbzPlaceMode();
-                setLbzStatus(lbzProbe ? 'Точка стоїть на карті' : 'Точка до ЛБЗ не задана', !lbzProbe);
+                setLbzStatus(lbzProbe ? 'Точка стоїть · відстань до сірої зони' : 'Точка за ЛБЗ не задана', !lbzProbe);
                 return;
             }
 
@@ -3083,9 +3091,9 @@ function formatCoord(lat, lon, format) {
             const btn = document.getElementById('fr-lbz-place');
             if (btn) {
                 btn.classList.add('active');
-                btn.textContent = 'Клацни точку…';
+                btn.textContent = 'Клацни за ЛБЗ…';
             }
-            setLbzStatus('Клацни на карті — виміряємо до найближчої ЛБЗ (сітки)', false);
+            setLbzStatus('Клацни ЗА ЛБЗ — виміряємо відстань до початку сірої зони', false);
             syncQuickBar();
             refreshHostLmbToolGate();
 
