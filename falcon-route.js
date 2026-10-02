@@ -851,11 +851,12 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'grayzone-66';
+    const FR_BUILD = 'host-lbz-67';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
     const hostAdvancedRegistry = new Set();
+    const hostLineRegistry = new Set(); // Polyline / Polygon з карти-хоста (ЛБЗ тощо)
 
     function markOwnOverlay(obj) {
         try {
@@ -920,7 +921,37 @@ function formatCoord(lat, lon, format) {
             });
         }
 
-        console.log('[FALCONROUTE] host-track spy: markers will be tracked for attach');
+        // Лінії/полігони хоста (ЛБЗ, сіра зона, контроль території)
+        const trackLine = (obj) => {
+            try {
+                if (obj && !isOwnOverlay(obj)) hostLineRegistry.add(obj);
+            } catch (_) { /* ignore */ }
+        };
+        const wrapLineCtor = (name) => {
+            const Orig = google.maps[name];
+            if (!Orig || Orig.__frLineWrapped) return;
+            function Wrapped(opts) {
+                const inst = new Orig(opts);
+                trackLine(inst);
+                return inst;
+            }
+            Wrapped.prototype = Orig.prototype;
+            try { Object.setPrototypeOf(Wrapped, Orig); } catch (_) { /* ignore */ }
+            Wrapped.__frLineWrapped = true;
+            google.maps[name] = Wrapped;
+        };
+        wrapLineCtor('Polyline');
+        wrapLineCtor('Polygon');
+        if (google.maps.Polyline?.prototype) {
+            wrapProtoMethod(google.maps.Polyline.prototype, 'setMap', trackLine);
+            wrapProtoMethod(google.maps.Polyline.prototype, 'setPath', trackLine);
+        }
+        if (google.maps.Polygon?.prototype) {
+            wrapProtoMethod(google.maps.Polygon.prototype, 'setMap', trackLine);
+            wrapProtoMethod(google.maps.Polygon.prototype, 'setPaths', trackLine);
+        }
+
+        console.log('[FALCONROUTE] host-track spy: markers + host lines');
         return true;
     }
 
@@ -941,6 +972,131 @@ function formatCoord(lat, lon, format) {
         setTimeout(() => {
             if (_spyTimer) { clearInterval(_spyTimer); _spyTimer = 0; }
         }, 60000);
+    }
+
+
+    function pathScore(path) {
+        if (!Array.isArray(path) || path.length < 2) return 0;
+        let len = 0;
+        for (let i = 0; i < path.length - 1; i++) {
+            const a = path[i];
+            const b = path[i + 1];
+            if (!a || !b) continue;
+            len += haversineM(a.lat, a.lon, b.lat, b.lon);
+        }
+        // Довгі ламані з багатьма вершинами = типова ЛБЗ / межа контролю
+        return path.length * 1000 + len;
+    }
+
+    function llFromGoogleLatLng(ll) {
+        if (!ll) return null;
+        try {
+            const lat = typeof ll.lat === 'function' ? ll.lat() : ll.lat;
+            const lon = typeof ll.lng === 'function' ? ll.lng() : (ll.lng ?? ll.lon);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+            return { lat, lon };
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function pathFromMvc(mvc) {
+        if (!mvc) return [];
+        try {
+            const arr = typeof mvc.getArray === 'function' ? mvc.getArray() : (Array.isArray(mvc) ? mvc : []);
+            const out = [];
+            for (let i = 0; i < arr.length; i++) {
+                const p = llFromGoogleLatLng(arr[i]);
+                if (p) out.push(p);
+            }
+            return out;
+        } catch (_) {
+            return [];
+        }
+    }
+
+    function extractGoogleOverlayPaths(obj) {
+        const paths = [];
+        if (!obj || isOwnOverlay(obj)) return paths;
+        try {
+            if (typeof obj.getMap === 'function' && obj.getMap() == null) return paths;
+        } catch (_) { /* ignore */ }
+        try {
+            if (typeof obj.getPath === 'function') {
+                const p = pathFromMvc(obj.getPath());
+                if (p.length >= 2) paths.push(p);
+            }
+        } catch (_) { /* ignore */ }
+        try {
+            if (typeof obj.getPaths === 'function') {
+                const mvc = obj.getPaths();
+                const rings = typeof mvc.getArray === 'function' ? mvc.getArray() : [];
+                rings.forEach((ring) => {
+                    const p = pathFromMvc(ring);
+                    if (p.length >= 2) paths.push(p);
+                });
+            }
+        } catch (_) { /* ignore */ }
+        return paths;
+    }
+
+    function collectGoogleDataPaths(mapInstance) {
+        const paths = [];
+        try {
+            const data = mapInstance?.data;
+            if (!data || typeof data.forEach !== 'function') return paths;
+            data.forEach((feature) => {
+                try {
+                    const geom = feature.getGeometry?.();
+                    if (!geom) return;
+                    const pushGeom = (g) => {
+                        if (!g) return;
+                        const t = g.getType?.();
+                        if (t === 'LineString' || t === 'LinearRing') {
+                            const arr = [];
+                            g.forEachLatLng?.((ll) => {
+                                const p = llFromGoogleLatLng(ll);
+                                if (p) arr.push(p);
+                            });
+                            if (arr.length >= 2) paths.push(arr);
+                        } else if (t === 'Polygon') {
+                            g.getArray?.().forEach((ring) => pushGeom(ring));
+                        } else if (t === 'MultiPolygon' || t === 'MultiLineString' || t === 'GeometryCollection') {
+                            g.getArray?.().forEach((child) => pushGeom(child));
+                        }
+                    };
+                    pushGeom(geom);
+                } catch (_) { /* ignore */ }
+            });
+        } catch (_) { /* ignore */ }
+        return paths;
+    }
+
+    function collectCesiumEntityPaths(viewer) {
+        const paths = [];
+        try {
+            const vals = viewer?.entities?.values || [];
+            vals.forEach((ent) => {
+                if (!ent || ent.__frOwn || !ent.polyline) return;
+                try {
+                    let positions = ent.polyline.positions;
+                    if (positions?.getValue) positions = positions.getValue(viewer.clock?.currentTime);
+                    if (!positions || !positions.length) return;
+                    const arr = [];
+                    for (let i = 0; i < positions.length; i++) {
+                        const c = positions[i];
+                        const cart = Cesium.Cartographic.fromCartesian(c);
+                        if (!cart) continue;
+                        arr.push({
+                            lat: cart.latitude * 180 / Math.PI,
+                            lon: cart.longitude * 180 / Math.PI
+                        });
+                    }
+                    if (arr.length >= 2) paths.push(arr);
+                } catch (_) { /* ignore */ }
+            });
+        } catch (_) { /* ignore */ }
+        return paths;
     }
 
     function latLonFromGooglePos(pos) {
@@ -2019,7 +2175,7 @@ function formatCoord(lat, lon, format) {
                             <button class="fr-btn fr-btn-pick" id="fr-aim-place">Ціль</button>
                             <button class="fr-btn fr-btn-danger" id="fr-aim-clear">Скинути ціль</button>
                         </div>
-                        <div class="fr-hint">«Ціль» — від борта до точки. «Сіра зона» — постав точку ЗА ЛБЗ; від неї піде лінія до початку сірої зони (найближча сітка/ЛБЗ).</div>
+                        <div class="fr-hint">«Ціль» — від борта до точки. «Сіра зона» — просто постав точку на карті: лінія сама піде до найближчої ЛБЗ, яка вже є на карті (малювати сітку не треба).</div>
                         <div class="fr-status muted" id="fr-aim-status">Ціль не задана</div>
                         <div class="fr-grid">
                             <button class="fr-btn fr-btn-pick" id="fr-lbz-place">Сіра зона</button>
@@ -2861,21 +3017,50 @@ function formatCoord(lat, lon, format) {
             setLbzStatus('Точка за ЛБЗ не задана', true);
         }
 
+        function collectHostLbzPaths() {
+            const scored = [];
+            const pushPath = (path, kind, id) => {
+                if (!Array.isArray(path) || path.length < 2) return;
+                const score = pathScore(path);
+                // короткі службові лінії відкидаємо; ЛБЗ зазвичай довга/густа
+                if (path.length < 8 && score < 25000) return;
+                scored.push({ id: id || kind, path, kind, score });
+            };
+
+            if (mapType === 'google') {
+                try { installHostTrackSpy(); } catch (_) { /* ignore */ }
+                let n = 0;
+                hostLineRegistry.forEach((obj) => {
+                    extractGoogleOverlayPaths(obj).forEach((p) => {
+                        n += 1;
+                        pushPath(p, 'host-line', 'host-line-' + n);
+                    });
+                });
+                collectGoogleDataPaths(map).forEach((p, i) => pushPath(p, 'host-data', 'host-data-' + (i + 1)));
+            } else {
+                collectCesiumEntityPaths(map).forEach((p, i) => pushPath(p, 'host-cesium', 'host-cesium-' + (i + 1)));
+            }
+
+            scored.sort((a, b) => b.score - a.score);
+            return scored.slice(0, 60);
+        }
+
         function collectLbzPaths() {
             const paths = [];
-            // Сітка = ЛБЗ / початок сірої зони
+            // 1) ЛБЗ уже на карті-хості — основне джерело
+            collectHostLbzPaths().forEach((p) => paths.push(p));
+            // 2) запасний варіант — наша сітка / вільна лінія
             Object.keys(analyticsStore?.grids || {}).forEach((id) => {
                 const path = analyticsStore.grids[id]?.path;
-                if (Array.isArray(path) && path.length >= 2) paths.push({ id, path, kind: 'grid' });
+                if (Array.isArray(path) && path.length >= 2) paths.push({ id, path, kind: 'grid', score: pathScore(path) });
             });
-            // Вільна лінія теж може бути межею сірої зони
             Object.keys(analyticsStore?.roads || {}).forEach((id) => {
                 const road = analyticsStore.roads[id];
                 if (!road) return;
                 const isFree = road.type === 'free' || road.mode === 'free' || road.lineKind === 'free';
                 if (!isFree) return;
                 const path = road.path;
-                if (Array.isArray(path) && path.length >= 2) paths.push({ id, path, kind: 'free' });
+                if (Array.isArray(path) && path.length >= 2) paths.push({ id, path, kind: 'free', score: pathScore(path) });
             });
             return paths;
         }
@@ -2933,7 +3118,7 @@ function formatCoord(lat, lon, format) {
                         }
                     }));
                 }
-                setLbzStatus('Немає сітки/ЛБЗ — намалюй «Сітка / ЛБЗ» в Аналітиці', true);
+                setLbzStatus('ЛБЗ на карті не знайдено. Увімкни шар ЛБЗ/сірої зони на карті або намалюй «Сітка / ЛБЗ»', true);
                 return;
             }
 
@@ -3091,9 +3276,9 @@ function formatCoord(lat, lon, format) {
             const btn = document.getElementById('fr-lbz-place');
             if (btn) {
                 btn.classList.add('active');
-                btn.textContent = 'Клацни за ЛБЗ…';
+                btn.textContent = 'Клацни точку…';
             }
-            setLbzStatus('Клацни ЗА ЛБЗ — виміряємо відстань до початку сірої зони', false);
+            setLbzStatus('Клацни на карті — лінія до найближчої ЛБЗ на карті', false);
             syncQuickBar();
             refreshHostLmbToolGate();
 

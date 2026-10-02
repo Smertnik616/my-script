@@ -20,7 +20,8 @@
                 text.includes('fr-ana-target') &&
                 text.includes('fr-ana-road') &&
                 text.includes('fr-lbz-place') &&
-                text.includes('До сірої зони')
+                text.includes('До сірої зони') &&
+                text.includes('collectHostLbzPaths')
             ) {
                 code = text;
                 break;
