@@ -851,7 +851,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'ruler-undo-70';
+    const FR_BUILD = 'gray-only-71';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -872,13 +872,8 @@ function formatCoord(lat, lon, format) {
     function isDeepstateFrontFeature(feature) {
         const name = String(feature?.properties?.name || feature?.properties?.Name || '');
         const n = name.toLowerCase().replace(/\s+/g, ' ');
-        // Основна ЛБЗ / окупація в Україні + сіра/невідома зона
-        if (n.includes('geojson.status.occupied')) return true;
-        if (n.includes('geojson.status.unknown')) return true;
-        if (n.includes('geojson.territories.ordlo')) return true;
-        if (n.includes('geojson.territories.crimea')) return true;
-        if (n.includes('geojson.territories.tuzla')) return true;
-        return false;
+        // Лише сіра зона DeepState («Статус невідомий»), без окупованих областей/Крим/ОРДЛО
+        return n.includes('geojson.status.unknown');
     }
 
     function pushDeepstateRing(ring, out) {
@@ -958,7 +953,7 @@ function formatCoord(lat, lon, format) {
                 deepstateLbz.fetchedAt = Date.now();
                 deepstateLbz.status = 'ok';
                 deepstateLbz.error = '';
-                console.log('[FALCONROUTE] DeepState LBZ', deepstateLbz.datetime || deepstateLbz.id,
+                console.log('[FALCONROUTE] DeepState gray zone', deepstateLbz.datetime || deepstateLbz.id,
                     'rings', deepstateLbz.paths.length);
                 return deepstateLbz;
             } catch (err) {
@@ -2291,7 +2286,7 @@ function formatCoord(lat, lon, format) {
                             <button class="fr-btn fr-btn-pick" id="fr-aim-place">Ціль</button>
                             <button class="fr-btn fr-btn-danger" id="fr-aim-clear">Скинути ціль</button>
                         </div>
-                        <div class="fr-hint">«Сіра зона» — скрипт сам тягне актуальну ЛБЗ з DeepState. Просто постав точку: лінія піде до найближчої точки ЛБЗ.</div>
+                        <div class="fr-hint">«Сіра зона» — скрипт тягне з DeepState лише шар сірої зони (не окуповані області). Постав точку — лінія до найближчого краю сірої зони.</div>
                         <div class="fr-status muted" id="fr-aim-status">Ціль не задана</div>
                         <div class="fr-grid">
                             <button class="fr-btn fr-btn-pick" id="fr-lbz-place">Сіра зона</button>
@@ -2300,7 +2295,7 @@ function formatCoord(lat, lon, format) {
                         <div class="fr-grid">
                             <button class="fr-btn fr-btn-danger" id="fr-lbz-clear">Скинути точку</button>
                         </div>
-                        <div class="fr-status muted" id="fr-lbz-status">DeepState ЛБЗ ще не завантажена</div>
+                        <div class="fr-status muted" id="fr-lbz-status">DeepState сіра зона ще не завантажена</div>
                         <div class="fr-grid">
                             <button class="fr-btn" id="fr-ruler-undo" title="Прибрати останню точку [Backspace]">Скасувати точку</button>
                             <button class="fr-btn fr-btn-danger" id="fr-ruler-clear">Скинути лінійку</button>
@@ -3196,17 +3191,17 @@ function formatCoord(lat, lon, format) {
         }
 
         function deepstateStatusText() {
-            if (deepstateLbz.status === 'loading') return 'DeepState: завантаження ЛБЗ…';
+            if (deepstateLbz.status === 'loading') return 'DeepState: завантаження сірої зони…';
             if (deepstateLbz.status === 'ok') {
                 const when = deepstateLbz.datetime || 'ок';
-                return `DeepState ЛБЗ · ${when} · кілець ${deepstateLbz.paths.length}`;
+                return `DeepState сіра зона · ${when} · полігонів ${deepstateLbz.paths.length}`;
             }
             if (deepstateLbz.status === 'err') return 'DeepState недоступний · ' + (deepstateLbz.error || 'помилка');
-            return 'DeepState ЛБЗ ще не завантажена';
+            return 'DeepState сіра зона ще не завантажена';
         }
 
         async function ensureDeepstateLbz(force = false) {
-            setLbzStatus(force ? 'Оновлення DeepState…' : 'Завантаження ЛБЗ з DeepState…', false);
+            setLbzStatus(force ? 'Оновлення сірої зони…' : 'Завантаження сірої зони з DeepState…', false);
             await fetchDeepstateLbz(force);
             if (deepstateLbz.status === 'ok') {
                 setLbzStatus(deepstateStatusText() + (lbzProbe ? ' · точка стоїть' : ' · постав точку'), false);
