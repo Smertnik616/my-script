@@ -851,7 +851,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'deepstate-lbz-68';
+    const FR_BUILD = 'no-wipe-all-69';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -2342,7 +2342,6 @@ function formatCoord(lat, lon, format) {
                             <button class="fr-btn" id="fr-ana-road-undo">Скасувати</button>
                             <button class="fr-btn fr-btn-danger" id="fr-ana-delete">Видалити [D]</button>
                         </div>
-                        <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ana-clear">Скинути все</button>
                         <div class="fr-status muted" id="fr-ana-status">Немає позначок</div>
                         <div class="fr-list" id="fr-ana-list"></div>
                     </div>
@@ -8588,12 +8587,6 @@ function formatCoord(lat, lon, format) {
             document.getElementById('fr-ana-road-finish')?.addEventListener('click', () => finishAnaRoad());
             document.getElementById('fr-ana-road-undo')?.addEventListener('click', () => undoRoadPoint());
             document.getElementById('fr-ana-delete')?.addEventListener('click', () => beginAnaDeleteMode());
-            document.getElementById('fr-ana-clear')?.addEventListener('click', () => {
-                if (!countAnalytics().total && !draftRoadPoints.length && !roadDraft.start) return;
-                if (!confirm('Скинути всю спільну аналітику (цілі, резерви, дороги, сітки, мітки)?')) return;
-                stopAnalyticsModes();
-                clearAllAnalytics();
-            });
             document.getElementById('fr-ana-road-op')?.addEventListener('change', () => {
                 if (isAnaRoadMode || isAnaGridMode || isAnaFreeMode) renderAnaDraft();
             });
