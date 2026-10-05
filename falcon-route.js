@@ -946,7 +946,7 @@ function formatCoord(lat, lon, format) {
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 const data = await res.json();
                 const parsed = parseDeepstateLbzPayload(data);
-                if (!parsed.paths.length) throw new Error('порожня геометрія ЛБЗ');
+                if (!parsed.paths.length) throw new Error('порожня сіра зона');
                 deepstateLbz.id = parsed.id;
                 deepstateLbz.datetime = parsed.datetime;
                 deepstateLbz.paths = parsed.paths;
@@ -2290,7 +2290,7 @@ function formatCoord(lat, lon, format) {
                         <div class="fr-status muted" id="fr-aim-status">Ціль не задана</div>
                         <div class="fr-grid">
                             <button class="fr-btn fr-btn-pick" id="fr-lbz-place">Сіра зона</button>
-                            <button class="fr-btn" id="fr-lbz-refresh">Оновити ЛБЗ</button>
+                            <button class="fr-btn" id="fr-lbz-refresh">Оновити сіру зону</button>
                         </div>
                         <div class="fr-grid">
                             <button class="fr-btn fr-btn-danger" id="fr-lbz-clear">Скинути точку</button>
