@@ -851,7 +851,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'no-wipe-all-69';
+    const FR_BUILD = 'ruler-undo-70';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -2301,7 +2301,10 @@ function formatCoord(lat, lon, format) {
                             <button class="fr-btn fr-btn-danger" id="fr-lbz-clear">Скинути точку</button>
                         </div>
                         <div class="fr-status muted" id="fr-lbz-status">DeepState ЛБЗ ще не завантажена</div>
-                        <button class="fr-btn fr-btn-danger fr-btn-wide" id="fr-ruler-clear">Скинути лінійку</button>
+                        <div class="fr-grid">
+                            <button class="fr-btn" id="fr-ruler-undo" title="Прибрати останню точку [Backspace]">Скасувати точку</button>
+                            <button class="fr-btn fr-btn-danger" id="fr-ruler-clear">Скинути лінійку</button>
+                        </div>
                         <div class="fr-status muted" id="fr-ruler-status">Лінійка не задана</div>
                     </div>
                 </details>
@@ -4665,6 +4668,13 @@ function formatCoord(lat, lon, format) {
             renderRuler();
         }
 
+        function undoRulerPoint() {
+            if (!rulerPoints.length) return false;
+            rulerPoints.pop();
+            renderRuler();
+            return true;
+        }
+
         function stopPickMode() {
             isPickMode = false;
             pickBtn.classList.remove('active');
@@ -5091,6 +5101,15 @@ function formatCoord(lat, lon, format) {
             if (isRulerMode) stopRulerMode();
             rulerPoints = [];
             renderRuler();
+        };
+
+        document.getElementById('fr-ruler-undo').onclick = () => {
+            if (!undoRulerPoint()) {
+                const status = document.getElementById('fr-ruler-status');
+                if (status) status.textContent = isRulerMode
+                    ? 'Немає точок для скасування · клацай на карті'
+                    : 'Лінійка порожня';
+            }
         };
 
         document.getElementById('fr-ruler-toggle').onclick = () => {
@@ -8937,6 +8956,10 @@ function formatCoord(lat, lon, format) {
                         e.stopPropagation();
                         openAccSection('ruler');
                         document.getElementById('fr-ruler')?.click();
+                    } else if (e.key === 'Backspace' && rulerPoints.length) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        undoRulerPoint();
                     } else if (isKey('KeyT', 't', 'е')) {
                         e.preventDefault();
                         e.stopPropagation();
