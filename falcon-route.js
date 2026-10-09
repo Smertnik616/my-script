@@ -181,6 +181,21 @@
     }
 
     async function ensureLicensed() {
+        // Локальний тест-стенд: без ключа
+        try {
+            const h = String(location.hostname || '');
+            const localHost = h === '127.0.0.1' || h === 'localhost' || h === '::1';
+            const testFlag = localStorage.getItem('falcon_route_local_test_v1') === '1';
+            const testClient = String(localStorage.getItem(CLIENT_KEY) || '').startsWith('test_');
+            if (localHost && (testFlag || testClient || /test-harness\.html/i.test(location.pathname || ''))) {
+                activeLicenseKey = activeLicenseKey || 'LOCAL-TEST';
+                activeLicenseMeta = activeLicenseMeta || { name: 'Local test', room: 't' };
+                accessRevoked = false;
+                console.log('[FALCONROUTE] local test harness — license skipped');
+                return true;
+            }
+        } catch (_) { /* ignore */ }
+
         if (!FIREBASE_ENABLED) return true;
         let key = getSavedLicenseKey();
         let lastError = '';
@@ -851,7 +866,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'gray-only-71';
+    const FR_BUILD = 'wind-fix-74';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -1558,6 +1573,12 @@ function formatCoord(lat, lon, format) {
         let lbzOverlays = [];
         let isLbzPlaceMode = false;
         let lbzPlaceListener = null;
+        let windPoint = null; // { lat, lon }
+        let windHeightM = 120;
+        let windData = null; // { time, levels: {10:{...},80:...}, heightM }
+        let windOverlays = [];
+        let isWindPlaceMode = false;
+        let windPlaceListener = null;
         let isPickMode = false;
         let isCoordPickMode = false;
         let isCorridorMode = false;
@@ -2053,6 +2074,44 @@ function formatCoord(lat, lon, format) {
                 #falcon-route-ui .fr-hub {
                     display:grid !important; grid-template-columns:repeat(3,1fr); gap:6px;
                 }
+                #falcon-route-ui .fr-windy-wrap {
+                    margin-top: 8px;
+                    display: none;
+                }
+                #falcon-route-ui .fr-windy-wrap.on { display: block; }
+                #falcon-route-ui .fr-windy-frame {
+                    width: 100%;
+                    height: 230px;
+                    border: 1px solid #334155;
+                    border-radius: 8px;
+                    background: #0b1220;
+                }
+                #falcon-route-ui .fr-wind-readout {
+                    font-size: 12px;
+                    line-height: 1.45;
+                    color: #e2e8f0;
+                    background: rgba(15, 23, 42, 0.75);
+                    border: 1px solid #334155;
+                    border-radius: 8px;
+                    padding: 8px 10px;
+                }
+                #falcon-route-ui .fr-wind-readout b { color: #7dd3fc; }
+                #falcon-route-ui .fr-wind-levels {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 8px;
+                    font-size: 11px;
+                }
+                #falcon-route-ui .fr-wind-levels th,
+                #falcon-route-ui .fr-wind-levels td {
+                    padding: 5px 6px;
+                    border-bottom: 1px solid #334155;
+                    text-align: left;
+                }
+                #falcon-route-ui .fr-wind-levels th { color: #94a3b8; font-weight: 600; }
+                #falcon-route-ui .fr-wind-levels tr.fr-wind-row { cursor: pointer; }
+                #falcon-route-ui .fr-wind-levels tr.fr-wind-row:hover td { background: rgba(56,189,248,.08); }
+                #falcon-route-ui .fr-wind-levels tr.on td { background: rgba(14,165,233,.18); color: #e0f2fe; }
                 #falcon-route-ui .fr-hub-lead {
                     grid-column:1 / -1; font-size:10px; line-height:1.3; color:#94a3b8;
                     background:#121826; border:1px solid #1f2937; border-radius:8px; padding:6px 8px;
@@ -2249,6 +2308,11 @@ function formatCoord(lat, lon, format) {
                             <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3"/><path d="M12 8.2l1.4 2.6 2.9.5-2 2.1.4 2.9L12 14.8l-2.7 1.5.4-2.9-2-2.1 2.9-.5L12 8.2z"/></svg></span>
                             <span class="fr-hub-txt">Координати</span>
                             <span class="fr-hub-desc">DD / DM / DMS / MGRS</span>
+                        </button>
+                        <button type="button" class="fr-hub-tile" data-fr-acc="wind">
+                            <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h11a3 3 0 1 0-3-3"/><path d="M4 7h7a2.5 2.5 0 1 0-2.5-2.5"/><path d="M4 17h13a2.5 2.5 0 1 1-2.5 2.5"/></svg></span>
+                            <span class="fr-hub-txt">Вітер</span>
+                            <span class="fr-hub-desc">азимут · м/с · Windy</span>
                         </button>
                         <button type="button" class="fr-hub-tile" data-fr-acc="catalog">
                             <span class="fr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5h11.5A2.5 2.5 0 0 1 19 7v12.5H7.5A2.5 2.5 0 0 0 5 22"/><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H19"/><path d="M9 9h7M9 13h7M9 17h4"/></svg></span>
@@ -2527,6 +2591,35 @@ function formatCoord(lat, lon, format) {
                     </div>
                 </details>
 
+                <details class="fr-acc" data-fr-acc="wind">
+                    <summary><span class="fr-acc-title">Вітер</span></summary>
+                    <div class="fr-acc-body">
+                        <div class="fr-hint">Постав точку — вітер на різних висотах (м/с + азимут куди дме). Обери висоту для стрілки на карті.</div>
+                        <div class="fr-grid">
+                            <button class="fr-btn fr-btn-pick" id="fr-wind-place">Точка вітру</button>
+                            <button class="fr-btn" id="fr-wind-center">Центр карти</button>
+                        </div>
+                        <div class="fr-grid">
+                            <button class="fr-btn" id="fr-wind-refresh">Оновити</button>
+                            <button class="fr-btn fr-btn-danger" id="fr-wind-clear">Скинути</button>
+                        </div>
+                        <div class="fr-field">
+                            <label for="fr-wind-height">Висота для стрілки</label>
+                            <select id="fr-wind-height">
+                                <option value="10">10 м · приземний</option>
+                                <option value="80">80 м</option>
+                                <option value="120" selected>120 м</option>
+                                <option value="180">180 м</option>
+                            </select>
+                        </div>
+                        <label class="fr-check"><input type="checkbox" id="fr-wind-show-arrow" checked> Стрілка на карті (куди дме)</label>
+                        <label class="fr-check"><input type="checkbox" id="fr-wind-show-windy"> Показати Windy</label>
+                        <div class="fr-wind-readout muted" id="fr-wind-status">Точка вітру не задана</div>
+                        <div class="fr-windy-wrap" id="fr-windy-wrap"></div>
+                        <div class="fr-hint">Дані: Open-Meteo · карта: Windy.com (після увімкнення)</div>
+                    </div>
+                </details>
+
                 <details class="fr-acc" data-fr-acc="io">
                     <summary><span class="fr-acc-title">Експорт / імпорт</span></summary>
                     <div class="fr-acc-body">
@@ -2566,8 +2659,13 @@ function formatCoord(lat, lon, format) {
         `;
 
         const range = document.createRange();
-        range.selectNodeContents(panel);
-        panel.appendChild(range.createContextualFragment(htmlLayout));
+        try {
+            range.selectNodeContents(panel);
+            panel.appendChild(range.createContextualFragment(htmlLayout));
+        } catch (err) {
+            console.warn('[FALCONROUTE] contextualFragment failed, fallback innerHTML', err);
+            panel.innerHTML = htmlLayout;
+        }
         document.body.appendChild(panel);
 
         const syncEl = document.getElementById('fr-sync');
@@ -3073,7 +3171,7 @@ function formatCoord(lat, lon, format) {
             }
             if (aimPlaceListener) {
                 if (mapType === 'google') google.maps.event.removeListener(aimPlaceListener);
-                else if (map.canvas) map.canvas.removeEventListener('click', aimPlaceListener);
+                else if (map.canvas) getMapCanvas()?.removeEventListener('click', aimPlaceListener);
                 aimPlaceListener = null;
             }
             syncQuickBar();
@@ -3118,7 +3216,7 @@ function formatCoord(lat, lon, format) {
             }
             if (lbzPlaceListener) {
                 if (mapType === 'google') google.maps.event.removeListener(lbzPlaceListener);
-                else if (map.canvas) map.canvas.removeEventListener('click', lbzPlaceListener);
+                else if (map.canvas) getMapCanvas()?.removeEventListener('click', lbzPlaceListener);
                 lbzPlaceListener = null;
             }
             syncQuickBar();
@@ -3131,6 +3229,476 @@ function formatCoord(lat, lon, format) {
             lbzHit = null;
             clearLbzOverlays();
             setLbzStatus('Точка за ЛБЗ не задана', true);
+        }
+
+
+        function compassLabel(deg) {
+            const d = ((Number(deg) % 360) + 360) % 360;
+            const names = ['Пн', 'ПнСх', 'Сх', 'ПдСх', 'Пд', 'ПдЗх', 'Зх', 'ПнЗх'];
+            return names[Math.round(d / 45) % 8];
+        }
+
+        function setWindStatus(html, muted = true) {
+            const el = document.getElementById('fr-wind-status');
+            if (!el) return;
+            el.innerHTML = html || '';
+            el.classList.toggle('muted', !!muted);
+        }
+
+        function clearWindOverlays() {
+            try {
+                if (mapType === 'google') {
+                    windOverlays.forEach((o) => { try { o.setMap(null); } catch (_) {} });
+                } else {
+                    windOverlays.forEach((ent) => { try { map.entities.remove(ent); } catch (_) {} });
+                }
+            } catch (_) {}
+            windOverlays = [];
+        }
+
+        function stopWindPlaceMode() {
+            isWindPlaceMode = false;
+            const btn = document.getElementById('fr-wind-place');
+            if (btn) {
+                btn.classList.remove('active');
+                btn.textContent = 'Точка вітру';
+            }
+            if (windPlaceListener) {
+                if (mapType === 'google') google.maps.event.removeListener(windPlaceListener);
+                else if (map.canvas) getMapCanvas()?.removeEventListener('click', windPlaceListener);
+                windPlaceListener = null;
+            }
+            syncQuickBar();
+            refreshHostLmbToolGate();
+        }
+
+        function clearWindPoint() {
+            stopWindPlaceMode();
+            windPoint = null;
+            windData = null;
+            clearWindOverlays();
+            const wrap = document.getElementById('fr-windy-wrap');
+            if (wrap) {
+                wrap.classList.remove('on');
+                wrap.innerHTML = '';
+            }
+            const cb = document.getElementById('fr-wind-show-windy');
+            if (cb) cb.checked = false;
+            setWindStatus('Точка вітру не задана', true);
+        }
+
+        function getMapViewCenter() {
+            try {
+                if (mapType === 'google') {
+                    const c = map.getCenter?.();
+                    if (!c) return null;
+                    const lat = typeof c.lat === 'function' ? c.lat() : c.lat;
+                    const lon = typeof c.lng === 'function' ? c.lng() : c.lng;
+                    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+                    return { lat, lon };
+                }
+                const carto = map.camera?.positionCartographic;
+                if (!carto || !window.Cesium) return null;
+                return {
+                    lat: Cesium.Math.toDegrees(carto.latitude),
+                    lon: Cesium.Math.toDegrees(carto.longitude)
+                };
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function windyLevelForHeight(h) {
+            const n = Number(h) || 10;
+            if (n <= 20) return 'surface';
+            if (n <= 100) return '100m';
+            return 'surface';
+        }
+
+        function windyEmbedUrl(lat, lon) {
+            const q = new URLSearchParams({
+                lat: lat.toFixed(5),
+                lon: lon.toFixed(5),
+                detailLat: lat.toFixed(5),
+                detailLon: lon.toFixed(5),
+                zoom: '9',
+                level: windyLevelForHeight(windHeightM),
+                overlay: 'wind',
+                product: 'ecmwf',
+                menu: '',
+                message: 'true',
+                marker: 'true',
+                calendar: 'now',
+                pressure: '',
+                type: 'map',
+                location: 'coordinates',
+                detail: 'true',
+                metricWind: 'm/s',
+                metricTemp: '°C',
+                radarRange: '-1'
+            });
+            return 'https://embed.windy.com/embed2.html?' + q.toString();
+        }
+
+        function updateWindyEmbed() {
+            const wrap = document.getElementById('fr-windy-wrap');
+            const want = !!document.getElementById('fr-wind-show-windy')?.checked;
+            if (!wrap) return;
+            if (!want || !windPoint) {
+                wrap.classList.remove('on');
+                wrap.innerHTML = '';
+                return;
+            }
+            wrap.classList.add('on');
+            let frame = wrap.querySelector('#fr-windy-frame');
+            if (!frame) {
+                frame = document.createElement('iframe');
+                frame.id = 'fr-windy-frame';
+                frame.className = 'fr-windy-frame';
+                frame.title = 'Windy wind';
+                frame.loading = 'lazy';
+                frame.referrerPolicy = 'no-referrer-when-downgrade';
+                frame.allowFullscreen = true;
+                wrap.appendChild(frame);
+            }
+            frame.src = windyEmbedUrl(windPoint.lat, windPoint.lon);
+        }
+
+        function getSelectedWindHeight() {
+            const el = document.getElementById('fr-wind-height');
+            const v = parseInt(el?.value, 10);
+            return [10, 80, 120, 180].includes(v) ? v : (windHeightM || 120);
+        }
+
+        function getActiveWindLevel() {
+            if (!windData?.levels) return null;
+            const h = getSelectedWindHeight();
+            return windData.levels[h] || windData.levels[10] || null;
+        }
+
+        function windArrowDataUrl(toDeg, speedMs, heightM) {
+            const spd = Number.isFinite(speedMs) ? speedMs.toFixed(1) : '—';
+            const az = Math.round(((Number(toDeg) % 360) + 360) % 360);
+            // SVG already rotated to "where wind goes"; tip points along flow
+            const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <defs>
+    <linearGradient id="shaft" x1="48" y1="78" x2="48" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0369a1"/>
+      <stop offset="100%" stop-color="#7dd3fc"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.6" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+  <g transform="rotate(${az} 48 48)" filter="url(#glow)">
+    <circle cx="48" cy="58" r="9" fill="#0c4a6e" stroke="#e0f2fe" stroke-width="2"/>
+    <path d="M45.2 62 V28 h5.6 V62 Z" fill="url(#shaft)"/>
+    <path d="M48 12 L63 38 L48 32 L33 38 Z" fill="#38bdf8" stroke="#f0f9ff" stroke-width="1.8" stroke-linejoin="round"/>
+    <path d="M42 66 L36 78 H44 L48 70 L52 78 H60 L54 66 Z" fill="#0284c7" stroke="#e0f2fe" stroke-width="1.2" stroke-linejoin="round"/>
+  </g>
+  <text x="48" y="92" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" font-weight="700" fill="#e0f2fe">${spd} м/с · ${heightM}м</text>
+</svg>`;
+            return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+        }
+
+        function windArrowLengthM(speedMs) {
+            const s = Number.isFinite(speedMs) ? speedMs : 3;
+            return Math.max(1400, Math.min(5200, 1600 + s * 220));
+        }
+
+        function renderWindArrow() {
+            clearWindOverlays();
+            if (!windPoint) return;
+            const lvl = getActiveWindLevel();
+            if (!lvl) return;
+            if (!document.getElementById('fr-wind-show-arrow')?.checked) return;
+
+            const flowDeg = lvl.toDeg;
+            const heightM = getSelectedWindHeight();
+            const len = windArrowLengthM(lvl.speedMs);
+            const tip = destinationPoint(windPoint.lat, windPoint.lon, flowDeg, len);
+            const mid = destinationPoint(windPoint.lat, windPoint.lon, flowDeg, len * 0.55);
+            const label = `${lvl.speedMs.toFixed(1)} м/с · ${heightM} м · ${Math.round(flowDeg)}° ${compassLabel(flowDeg)}`;
+
+            if (mapType === 'google') {
+                // тінь / підкладка
+                const under = new google.maps.Polyline({
+                    path: [
+                        { lat: windPoint.lat, lng: windPoint.lon },
+                        { lat: tip.lat, lng: tip.lon }
+                    ],
+                    map,
+                    geodesic: true,
+                    strokeColor: '#082f49',
+                    strokeOpacity: 0.45,
+                    strokeWeight: 8,
+                    zIndex: 198
+                });
+                markOwnOverlay(under);
+                windOverlays.push(under);
+
+                const line = new google.maps.Polyline({
+                    path: [
+                        { lat: windPoint.lat, lng: windPoint.lon },
+                        { lat: tip.lat, lng: tip.lon }
+                    ],
+                    map,
+                    geodesic: true,
+                    strokeColor: '#38bdf8',
+                    strokeOpacity: 0.95,
+                    strokeWeight: 3.5,
+                    zIndex: 199,
+                    icons: [{
+                        icon: {
+                            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                            scale: 5,
+                            strokeColor: '#f0f9ff',
+                            fillColor: '#0ea5e9',
+                            fillOpacity: 1,
+                            strokeWeight: 1.5
+                        },
+                        offset: '100%'
+                    }, {
+                        icon: {
+                            path: 'M 0,-1 0,1',
+                            strokeOpacity: 0.7,
+                            scale: 2,
+                            strokeColor: '#7dd3fc'
+                        },
+                        offset: '0',
+                        repeat: '14px'
+                    }]
+                });
+                markOwnOverlay(line);
+                windOverlays.push(line);
+
+                const iconUrl = windArrowDataUrl(flowDeg, lvl.speedMs, heightM);
+                const m = new google.maps.Marker({
+                    position: { lat: windPoint.lat, lng: windPoint.lon },
+                    map,
+                    title: `Вітер ${heightM} м`,
+                    zIndex: 210,
+                    optimized: false,
+                    icon: {
+                        url: iconUrl,
+                        scaledSize: new google.maps.Size(86, 86),
+                        anchor: new google.maps.Point(43, 52)
+                    }
+                });
+                markOwnOverlay(m);
+                windOverlays.push(m);
+
+                windOverlays.push(createGoogleRulerLabel(
+                    new google.maps.LatLng(mid.lat, mid.lon),
+                    label,
+                    flowDeg
+                ));
+            } else if (Cartesian3 && window.Cesium) {
+                windOverlays.push(map.entities.add({
+                    polyline: {
+                        positions: [
+                            Cartesian3.fromDegrees(windPoint.lon, windPoint.lat),
+                            Cartesian3.fromDegrees(tip.lon, tip.lat)
+                        ],
+                        width: 7,
+                        material: toCesiumColor('#082f49', 0.5),
+                        clampToGround: true
+                    }
+                }));
+                windOverlays.push(map.entities.add({
+                    polyline: {
+                        positions: [
+                            Cartesian3.fromDegrees(windPoint.lon, windPoint.lat),
+                            Cartesian3.fromDegrees(tip.lon, tip.lat)
+                        ],
+                        width: 3.5,
+                        material: toCesiumColor('#38bdf8'),
+                        clampToGround: true
+                    }
+                }));
+                windOverlays.push(map.entities.add({
+                    position: Cartesian3.fromDegrees(windPoint.lon, windPoint.lat),
+                    billboard: {
+                        image: windArrowDataUrl(flowDeg, lvl.speedMs, heightM),
+                        width: 86,
+                        height: 86,
+                        verticalOrigin: Cesium?.VerticalOrigin?.CENTER,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                }));
+                windOverlays.push(map.entities.add({
+                    position: Cartesian3.fromDegrees(mid.lon, mid.lat),
+                    label: {
+                        text: label,
+                        font: 'bold 12px sans-serif',
+                        fillColor: toCesiumColor('#e0f2fe'),
+                        outlineColor: toCesiumColor('#0c4a6e'),
+                        outlineWidth: 3,
+                        style: Cesium?.LabelStyle?.FILL_AND_OUTLINE,
+                        pixelOffset: Cesium?.Cartesian2 ? new Cesium.Cartesian2(0, -16) : undefined,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                }));
+                map.scene?.requestRender?.();
+            }
+        }
+
+        function formatWindReadout() {
+            if (!windPoint) return 'Точка вітру не задана';
+            if (!windData?.levels) return 'Завантаження вітру…';
+            const h = getSelectedWindHeight();
+            const lvl = getActiveWindLevel();
+            if (!lvl) return 'Немає даних для обраної висоти';
+            const from = Math.round(lvl.fromDeg);
+            const to = Math.round(lvl.toDeg);
+            const gust = Number.isFinite(lvl.gustMs)
+                ? ` · пориви <b>${lvl.gustMs.toFixed(1)} м/с</b>`
+                : '';
+            const rows = [10, 80, 120, 180].map((hh) => {
+                const L = windData.levels[hh];
+                if (!L) return '';
+                const on = hh === h ? ' on' : '';
+                return `<tr class="fr-wind-row${on}" data-h="${hh}">` +
+                    `<td><b>${hh} м</b></td>` +
+                    `<td>${L.speedMs.toFixed(1)} м/с</td>` +
+                    `<td>${Math.round(L.toDeg)}° ${compassLabel(L.toDeg)}</td>` +
+                    `<td>${Math.round(L.fromDeg)}° ${compassLabel(L.fromDeg)}</td>` +
+                    `</tr>`;
+            }).join('');
+            return (
+                `Обрано <b>${h} м</b>: <b>${lvl.speedMs.toFixed(1)} м/с</b>${gust}<br>` +
+                `Куди дме: <b>${to}°</b> (${compassLabel(to)}) · Звідки: <b>${from}°</b> (${compassLabel(from)})<br>` +
+                `<table class="fr-wind-levels"><thead><tr><th>Висота</th><th>Швидк.</th><th>Куди</th><th>Звідки</th></tr></thead>` +
+                `<tbody>${rows}</tbody></table>` +
+                `<span style="opacity:.75">${windPoint.lat.toFixed(5)}, ${windPoint.lon.toFixed(5)}` +
+                (windData.time ? ` · ${windData.time}` : '') +
+                ` · Open-Meteo</span>`
+            );
+        }
+
+        function bindWindLevelRows() {
+            const el = document.getElementById('fr-wind-status');
+            if (!el) return;
+            el.querySelectorAll('tr.fr-wind-row[data-h]').forEach((tr) => {
+                tr.onclick = () => {
+                    const hh = parseInt(tr.getAttribute('data-h'), 10);
+                    if (![10, 80, 120, 180].includes(hh)) return;
+                    windHeightM = hh;
+                    const sel = document.getElementById('fr-wind-height');
+                    if (sel) sel.value = String(hh);
+                    setWindStatus(formatWindReadout(), false);
+                    bindWindLevelRows();
+                    renderWindArrow();
+                    updateWindyEmbed();
+                };
+            });
+        }
+
+        async function fetchWindAt(lat, lon) {
+            const url = 'https://api.open-meteo.com/v1/forecast'
+                + `?latitude=${encodeURIComponent(lat)}`
+                + `&longitude=${encodeURIComponent(lon)}`
+                + '&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m'
+                + ',wind_speed_80m,wind_direction_80m'
+                + ',wind_speed_120m,wind_direction_120m'
+                + ',wind_speed_180m,wind_direction_180m'
+                + '&wind_speed_unit=ms'
+                + '&timezone=auto';
+            const res = await fetch(url, { cache: 'no-store' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            const cur = data.current || {};
+            const levels = {};
+            [10, 80, 120, 180].forEach((h) => {
+                const speed = Number(cur['wind_speed_' + h + 'm']);
+                const fromDeg = Number(cur['wind_direction_' + h + 'm']);
+                if (!Number.isFinite(speed) || !Number.isFinite(fromDeg)) return;
+                const from = ((fromDeg % 360) + 360) % 360;
+                levels[h] = {
+                    speedMs: speed,
+                    fromDeg: from,
+                    toDeg: (from + 180) % 360,
+                    gustMs: h === 10 && Number.isFinite(Number(cur.wind_gusts_10m))
+                        ? Number(cur.wind_gusts_10m)
+                        : null
+                };
+            });
+            if (!Object.keys(levels).length) throw new Error('немає даних вітру');
+            return {
+                time: cur.time || '',
+                levels,
+                heightM: getSelectedWindHeight()
+            };
+        }
+
+        async function applyWindPoint(lat, lon) {
+            windPoint = { lat, lon };
+            windHeightM = getSelectedWindHeight();
+            windData = null;
+            setWindStatus('Завантаження вітру…', false);
+            clearWindOverlays();
+            try {
+                windData = await fetchWindAt(lat, lon);
+                setWindStatus(formatWindReadout(), false);
+                bindWindLevelRows();
+                renderWindArrow();
+                updateWindyEmbed();
+            } catch (err) {
+                windData = null;
+                setWindStatus('Помилка вітру: ' + (err?.message || err), true);
+            }
+        }
+
+        function beginWindPlace() {
+            if (isPickMode) stopPickMode();
+            if (isCoordPickMode) stopCoordPickMode();
+            if (isCorridorMode) stopCorridorMode(false);
+            if (isRulerMode) stopRulerMode();
+            if (isAimPlaceMode) stopAimPlaceMode();
+            if (isLbzPlaceMode) stopLbzPlaceMode();
+            stopAnalyticsModes();
+            stopAircraftModes();
+            if (isAttachPickMode) {
+                clearAttachPickListener();
+                updateAttachBtn();
+            }
+
+            if (isWindPlaceMode) {
+                stopWindPlaceMode();
+                setWindStatus(windPoint ? formatWindReadout() : 'Точка вітру не задана', !windData);
+                return;
+            }
+
+            isWindPlaceMode = true;
+            const btn = document.getElementById('fr-wind-place');
+            if (btn) {
+                btn.classList.add('active');
+                btn.textContent = 'Клацни точку…';
+            }
+            setWindStatus('Клацни на карті точку для вітру', false);
+            syncQuickBar();
+            refreshHostLmbToolGate();
+
+            const onPick = (lat, lon) => {
+                stopWindPlaceMode();
+                applyWindPoint(lat, lon);
+            };
+
+            if (mapType === 'google') {
+                windPlaceListener = map.addListener('click', (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                });
+            } else if (getMapCanvas()) {
+                windPlaceListener = (e) => {
+                    const ll = mapClickLatLon(e);
+                    if (!ll) return;
+                    onPick(ll.lat, ll.lon);
+                };
+                getMapCanvas().addEventListener('click', windPlaceListener);
+            }
         }
 
         function collectHostLbzPaths() {
@@ -3407,6 +3975,7 @@ function formatCoord(lat, lon, format) {
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
             if (isAimPlaceMode) stopAimPlaceMode();
+            if (isWindPlaceMode) stopWindPlaceMode();
             stopAnalyticsModes();
             stopAircraftModes();
             if (isAttachPickMode) {
@@ -3454,13 +4023,13 @@ function formatCoord(lat, lon, format) {
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 });
-            } else if (map.canvas) {
+            } else if (getMapCanvas()) {
                 lbzPlaceListener = (e) => {
                     const ll = mapClickLatLon(e);
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 };
-                map.canvas.addEventListener('click', lbzPlaceListener);
+                getMapCanvas().addEventListener('click', lbzPlaceListener);
             }
         }
 
@@ -3694,6 +4263,7 @@ function formatCoord(lat, lon, format) {
             if (isCorridorMode) stopCorridorMode(false);
             if (isRulerMode) stopRulerMode();
             if (isLbzPlaceMode) stopLbzPlaceMode();
+            if (isWindPlaceMode) stopWindPlaceMode();
             stopAnalyticsModes();
             stopAircraftModes();
             if (isAttachPickMode) {
@@ -3732,13 +4302,13 @@ function formatCoord(lat, lon, format) {
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 });
-            } else if (map.canvas) {
+            } else if (getMapCanvas()) {
                 aimPlaceListener = (e) => {
                     const ll = mapClickLatLon(e);
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 };
-                map.canvas.addEventListener('click', aimPlaceListener);
+                getMapCanvas().addEventListener('click', aimPlaceListener);
             }
         }
 
@@ -4426,8 +4996,8 @@ function formatCoord(lat, lon, format) {
                     if (mapType === 'google') {
                         google.maps.event.removeListener(zoneListener);
                         if (zoneDbl) google.maps.event.removeListener(zoneDbl);
-                    } else if (map.canvas) {
-                        map.canvas.removeEventListener('click', zoneListener);
+                    } else if (getMapCanvas()) {
+                        getMapCanvas()?.removeEventListener('click', zoneListener);
                     }
                 } catch (_) { /* ignore */ }
                 zoneListener = null;
@@ -4496,7 +5066,7 @@ function formatCoord(lat, lon, format) {
                     if (e?.latLng) addPt(e.latLng.lat(), e.latLng.lng());
                     stopZoneDrawMode(true);
                 });
-            } else if (map.canvas) {
+            } else if (getMapCanvas()) {
                 zoneListener = (e) => {
                     try {
                         const rect = map.canvas.getBoundingClientRect();
@@ -4510,7 +5080,7 @@ function formatCoord(lat, lon, format) {
                         );
                     } catch (_) { /* ignore */ }
                 };
-                map.canvas.addEventListener('click', zoneListener);
+                getMapCanvas().addEventListener('click', zoneListener);
             }
             renderZones();
             syncQuickBar();
@@ -4649,8 +5219,8 @@ function formatCoord(lat, lon, format) {
             if (rulerListener) {
                 if (mapType === 'google') {
                     google.maps.event.removeListener(rulerListener);
-                } else if (map.canvas) {
-                    map.canvas.removeEventListener('click', rulerListener);
+                } else if (getMapCanvas()) {
+                    getMapCanvas()?.removeEventListener('click', rulerListener);
                 }
                 rulerListener = null;
             }
@@ -4678,8 +5248,8 @@ function formatCoord(lat, lon, format) {
             if (pickListener) {
                 if (mapType === 'google') {
                     google.maps.event.removeListener(pickListener);
-                } else if (map.canvas) {
-                    map.canvas.removeEventListener('click', pickListener);
+                } else if (getMapCanvas()) {
+                    getMapCanvas()?.removeEventListener('click', pickListener);
                 }
                 pickListener = null;
             }
@@ -4696,8 +5266,8 @@ function formatCoord(lat, lon, format) {
             if (coordPickListener) {
                 if (mapType === 'google') {
                     google.maps.event.removeListener(coordPickListener);
-                } else if (map.canvas) {
-                    map.canvas.removeEventListener('click', coordPickListener);
+                } else if (getMapCanvas()) {
+                    getMapCanvas()?.removeEventListener('click', coordPickListener);
                 }
                 coordPickListener = null;
             }
@@ -4726,8 +5296,8 @@ function formatCoord(lat, lon, format) {
                 if (mapType === 'google') {
                     google.maps.event.removeListener(corridorListener);
                     if (corridorDbl) google.maps.event.removeListener(corridorDbl);
-                } else if (map.canvas) {
-                    map.canvas.removeEventListener('click', corridorListener);
+                } else if (getMapCanvas()) {
+                    getMapCanvas()?.removeEventListener('click', corridorListener);
                 }
                 corridorListener = null;
                 corridorDbl = null;
@@ -4847,6 +5417,7 @@ function formatCoord(lat, lon, format) {
             if (isCoordPickMode) stopCoordPickMode();
             if (isAimPlaceMode) stopAimPlaceMode();
             if (isLbzPlaceMode) stopLbzPlaceMode();
+            if (isWindPlaceMode) stopWindPlaceMode();
             stopAnalyticsModes();
             stopAircraftModes();
             if (isPickMode) {
@@ -4879,7 +5450,7 @@ function formatCoord(lat, lon, format) {
                     }
                     stopPickMode();
                 };
-                map.canvas.addEventListener('click', pickListener, { once: true });
+                getMapCanvas().addEventListener('click', pickListener, { once: true });
             }
         };
 
@@ -4889,6 +5460,7 @@ function formatCoord(lat, lon, format) {
             if (isPickMode) stopPickMode();
             if (isAimPlaceMode) stopAimPlaceMode();
             if (isLbzPlaceMode) stopLbzPlaceMode();
+            if (isWindPlaceMode) stopWindPlaceMode();
             stopAnalyticsModes();
             stopAircraftModes();
             const coordPickBtn = document.getElementById('fr-coord-pick');
@@ -4908,14 +5480,14 @@ function formatCoord(lat, lon, format) {
                     copyCoordsAt(e.latLng.lat(), e.latLng.lng(), coordPickBtn);
                     stopCoordPickMode();
                 });
-            } else if (map.canvas) {
+            } else if (getMapCanvas()) {
                 coordPickListener = (e) => {
                     const ll = mapClickLatLon(e);
                     if (!ll) return;
                     copyCoordsAt(ll.lat, ll.lon, coordPickBtn);
                     stopCoordPickMode();
                 };
-                map.canvas.addEventListener('click', coordPickListener, { once: true });
+                getMapCanvas().addEventListener('click', coordPickListener, { once: true });
             }
         }
 
@@ -4986,6 +5558,7 @@ function formatCoord(lat, lon, format) {
             if (isRulerMode) stopRulerMode();
             if (isAimPlaceMode) stopAimPlaceMode();
             if (isLbzPlaceMode) stopLbzPlaceMode();
+            if (isWindPlaceMode) stopWindPlaceMode();
             if (isZoneDrawMode) stopZoneDrawMode(false);
             stopAnalyticsModes();
             stopAircraftModes();
@@ -5029,7 +5602,7 @@ function formatCoord(lat, lon, format) {
                         renderCorridor();
                     }
                 };
-                map.canvas.addEventListener('click', corridorListener);
+                getMapCanvas().addEventListener('click', corridorListener);
             }
         };
 
@@ -5046,6 +5619,7 @@ function formatCoord(lat, lon, format) {
             if (isCorridorMode) stopCorridorMode(false);
             if (isAimPlaceMode) stopAimPlaceMode();
             if (isLbzPlaceMode) stopLbzPlaceMode();
+            if (isWindPlaceMode) stopWindPlaceMode();
             stopAnalyticsModes();
             stopAircraftModes();
 
@@ -5080,36 +5654,64 @@ function formatCoord(lat, lon, format) {
                         );
                     }
                 };
-                map.canvas.addEventListener('click', rulerListener);
+                getMapCanvas().addEventListener('click', rulerListener);
             }
         };
 
-        document.getElementById('fr-aim-place').onclick = () => beginAimPlace();
-        document.getElementById('fr-aim-clear').onclick = () => clearAimTarget();
-        document.getElementById('fr-lbz-place').onclick = () => beginLbzPlace();
-        document.getElementById('fr-lbz-clear').onclick = () => clearLbzProbe();
-        document.getElementById('fr-lbz-refresh').onclick = () => {
+        document.getElementById('fr-aim-place')?.addEventListener('click', () => beginAimPlace());
+        document.getElementById('fr-aim-clear')?.addEventListener('click', () => clearAimTarget());
+        document.getElementById('fr-lbz-place')?.addEventListener('click', () => beginLbzPlace());
+        document.getElementById('fr-lbz-clear')?.addEventListener('click', () => clearLbzProbe());
+        document.getElementById('fr-lbz-refresh')?.addEventListener('click', () => {
             ensureDeepstateLbz(true).catch(() => {});
-        };
+        });
 
-        document.getElementById('fr-ruler-clear').onclick = () => {
+        document.getElementById('fr-wind-place')?.addEventListener('click', () => beginWindPlace());
+        document.getElementById('fr-wind-center')?.addEventListener('click', () => {
+            const c = getMapViewCenter();
+            if (!c) {
+                setWindStatus('Не вдалося взяти центр карти', true);
+                return;
+            }
+            applyWindPoint(c.lat, c.lon);
+        });
+        document.getElementById('fr-wind-refresh')?.addEventListener('click', () => {
+            if (!windPoint) {
+                setWindStatus('Спочатку постав точку вітру', true);
+                return;
+            }
+            applyWindPoint(windPoint.lat, windPoint.lon);
+        });
+        document.getElementById('fr-wind-clear')?.addEventListener('click', () => clearWindPoint());
+        document.getElementById('fr-wind-show-arrow')?.addEventListener('change', () => renderWindArrow());
+        document.getElementById('fr-wind-show-windy')?.addEventListener('change', () => updateWindyEmbed());
+        document.getElementById('fr-wind-height')?.addEventListener('change', () => {
+            windHeightM = getSelectedWindHeight();
+            if (!windPoint || !windData) return;
+            setWindStatus(formatWindReadout(), false);
+            bindWindLevelRows();
+            renderWindArrow();
+            updateWindyEmbed();
+        });
+
+        document.getElementById('fr-ruler-clear')?.addEventListener('click', () => {
             if (isRulerMode) stopRulerMode();
             rulerPoints = [];
             renderRuler();
-        };
+        });
 
-        document.getElementById('fr-ruler-undo').onclick = () => {
+        document.getElementById('fr-ruler-undo')?.addEventListener('click', () => {
             if (!undoRulerPoint()) {
                 const status = document.getElementById('fr-ruler-status');
                 if (status) status.textContent = isRulerMode
                     ? 'Немає точок для скасування · клацай на карті'
                     : 'Лінійка порожня';
             }
-        };
+        });
 
-        document.getElementById('fr-ruler-toggle').onclick = () => {
+        document.getElementById('fr-ruler-toggle')?.addEventListener('click', () => {
             setShowRuler(!showRuler);
-        };
+        });
 
         document.getElementById('fr-ruler-show').addEventListener('change', (e) => {
             setShowRuler(e.target.checked);
@@ -5442,8 +6044,8 @@ function formatCoord(lat, lon, format) {
             if (attachPickListener) {
                 if (mapType === 'google') {
                     google.maps.event.removeListener(attachPickListener);
-                } else if (map.canvas) {
-                    map.canvas.removeEventListener('click', attachPickListener);
+                } else if (getMapCanvas()) {
+                    getMapCanvas()?.removeEventListener('click', attachPickListener);
                 }
                 attachPickListener = null;
             }
@@ -5649,13 +6251,13 @@ function formatCoord(lat, lon, format) {
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 });
-            } else if (map.canvas) {
+            } else if (getMapCanvas()) {
                 attachPickListener = (e) => {
                     const ll = mapClickLatLon(e);
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 };
-                map.canvas.addEventListener('click', attachPickListener);
+                getMapCanvas().addEventListener('click', attachPickListener);
             }
         }
 
@@ -6630,12 +7232,12 @@ function formatCoord(lat, lon, format) {
             updateCruiseBtn();
             if (placeAircraftListener) {
                 if (mapType === 'google') google.maps.event.removeListener(placeAircraftListener);
-                else if (map.canvas) map.canvas.removeEventListener('click', placeAircraftListener);
+                else if (map.canvas) getMapCanvas()?.removeEventListener('click', placeAircraftListener);
                 placeAircraftListener = null;
             }
             if (flyToListener) {
                 if (mapType === 'google') google.maps.event.removeListener(flyToListener);
-                else if (map.canvas) map.canvas.removeEventListener('click', flyToListener);
+                else if (map.canvas) getMapCanvas()?.removeEventListener('click', flyToListener);
                 flyToListener = null;
             }
             syncQuickBar();
@@ -6730,6 +7332,15 @@ function formatCoord(lat, lon, format) {
             updateDistancesPanel(null);
         }
 
+        function getMapCanvas() {
+            try {
+                if (map?.canvas) return map.canvas;
+                if (map?.scene?.canvas) return map.scene.canvas;
+                if (map?.cesiumWidget?.canvas) return map.cesiumWidget.canvas;
+            } catch (_) {}
+            return null;
+        }
+
         function mapClickLatLon(e) {
             if (mapType === 'google') {
                 if (!e?.latLng) return null;
@@ -6753,6 +7364,7 @@ function formatCoord(lat, lon, format) {
             if (isRulerMode) stopRulerMode();
             if (isAimPlaceMode) stopAimPlaceMode();
             if (isLbzPlaceMode) stopLbzPlaceMode();
+            if (isWindPlaceMode) stopWindPlaceMode();
             stopAnalyticsModes();
             if (isPlaneAttached) detachFromHostTrack(true);
             if (isAttachPickMode) {
@@ -6786,7 +7398,7 @@ function formatCoord(lat, lon, format) {
                     spawnOrMoveAircraft(ll.lat, ll.lon);
                     stopAircraftModes();
                 };
-                map.canvas.addEventListener('click', placeAircraftListener);
+                getMapCanvas().addEventListener('click', placeAircraftListener);
             }
         }
 
@@ -7956,7 +8568,7 @@ function formatCoord(lat, lon, format) {
                 target: () => {
                     if (anaTargetListener) {
                         if (mapType === 'google') google.maps.event.removeListener(anaTargetListener);
-                        else if (map.canvas) map.canvas.removeEventListener('click', anaTargetListener);
+                        else if (map.canvas) getMapCanvas()?.removeEventListener('click', anaTargetListener);
                         anaTargetListener = null;
                     }
                     isAnaTargetMode = false;
@@ -7969,7 +8581,7 @@ function formatCoord(lat, lon, format) {
                 note: () => {
                     if (anaNoteListener) {
                         if (mapType === 'google') google.maps.event.removeListener(anaNoteListener);
-                        else if (map.canvas) map.canvas.removeEventListener('click', anaNoteListener);
+                        else if (map.canvas) getMapCanvas()?.removeEventListener('click', anaNoteListener);
                         anaNoteListener = null;
                     }
                     isAnaNoteMode = false;
@@ -7982,7 +8594,7 @@ function formatCoord(lat, lon, format) {
                 road: () => {
                     if (anaRoadListener) {
                         if (mapType === 'google') google.maps.event.removeListener(anaRoadListener);
-                        else if (map.canvas) map.canvas.removeEventListener('click', anaRoadListener);
+                        else if (map.canvas) getMapCanvas()?.removeEventListener('click', anaRoadListener);
                         anaRoadListener = null;
                     }
                     isAnaRoadMode = false;
@@ -8007,7 +8619,7 @@ function formatCoord(lat, lon, format) {
                 delete: () => {
                     if (anaDeleteListener) {
                         if (mapType === 'google') google.maps.event.removeListener(anaDeleteListener);
-                        else if (map.canvas) map.canvas.removeEventListener('click', anaDeleteListener);
+                        else if (map.canvas) getMapCanvas()?.removeEventListener('click', anaDeleteListener);
                         anaDeleteListener = null;
                     }
                     isAnaDeleteMode = false;
@@ -8020,7 +8632,7 @@ function formatCoord(lat, lon, format) {
                 ban: () => {
                     if (anaBanListener) {
                         if (mapType === 'google') google.maps.event.removeListener(anaBanListener);
-                        else if (map.canvas) map.canvas.removeEventListener('click', anaBanListener);
+                        else if (map.canvas) getMapCanvas()?.removeEventListener('click', anaBanListener);
                         anaBanListener = null;
                     }
                     isAnaBanMode = false;
@@ -8033,7 +8645,7 @@ function formatCoord(lat, lon, format) {
                 reserve: () => {
                     if (anaReserveListener) {
                         if (mapType === 'google') google.maps.event.removeListener(anaReserveListener);
-                        else if (map.canvas) map.canvas.removeEventListener('click', anaReserveListener);
+                        else if (map.canvas) getMapCanvas()?.removeEventListener('click', anaReserveListener);
                         anaReserveListener = null;
                     }
                     isAnaReserveMode = false;
@@ -8067,6 +8679,7 @@ function formatCoord(lat, lon, format) {
             if (isRulerMode) stopRulerMode();
             if (isAimPlaceMode) stopAimPlaceMode();
             if (isLbzPlaceMode) stopLbzPlaceMode();
+            if (isWindPlaceMode) stopWindPlaceMode();
             stopAircraftModes();
             if (isAttachPickMode) {
                 clearAttachPickListener();
@@ -8118,13 +8731,13 @@ function formatCoord(lat, lon, format) {
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 });
-            } else if (map.canvas) {
+            } else if (getMapCanvas()) {
                 anaTargetListener = (e) => {
                     const ll = mapClickLatLon(e);
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 };
-                map.canvas.addEventListener('click', anaTargetListener);
+                getMapCanvas().addEventListener('click', anaTargetListener);
             }
         }
 
@@ -8175,13 +8788,13 @@ function formatCoord(lat, lon, format) {
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 });
-            } else if (map.canvas) {
+            } else if (getMapCanvas()) {
                 anaReserveListener = (e) => {
                     const ll = mapClickLatLon(e);
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 };
-                map.canvas.addEventListener('click', anaReserveListener);
+                getMapCanvas().addEventListener('click', anaReserveListener);
             }
         }
 
@@ -8229,13 +8842,13 @@ function formatCoord(lat, lon, format) {
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 });
-            } else if (map.canvas) {
+            } else if (getMapCanvas()) {
                 anaNoteListener = (e) => {
                     const ll = mapClickLatLon(e);
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 };
-                map.canvas.addEventListener('click', anaNoteListener);
+                getMapCanvas().addEventListener('click', anaNoteListener);
             }
         }
 
@@ -8338,13 +8951,13 @@ function formatCoord(lat, lon, format) {
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 });
-            } else if (map.canvas) {
+            } else if (getMapCanvas()) {
                 anaRoadListener = (e) => {
                     const ll = mapClickLatLon(e);
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 };
-                map.canvas.addEventListener('click', anaRoadListener);
+                getMapCanvas().addEventListener('click', anaRoadListener);
             }
         }
 
@@ -8532,13 +9145,13 @@ function formatCoord(lat, lon, format) {
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 });
-            } else if (map.canvas) {
+            } else if (getMapCanvas()) {
                 anaBanListener = (e) => {
                     const ll = mapClickLatLon(e);
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 };
-                map.canvas.addEventListener('click', anaBanListener);
+                getMapCanvas().addEventListener('click', anaBanListener);
             }
         }
 
@@ -8580,13 +9193,13 @@ function formatCoord(lat, lon, format) {
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 });
-            } else if (map.canvas) {
+            } else if (getMapCanvas()) {
                 anaDeleteListener = (e) => {
                     const ll = mapClickLatLon(e);
                     if (!ll) return;
                     onPick(ll.lat, ll.lon);
                 };
-                map.canvas.addEventListener('click', anaDeleteListener);
+                getMapCanvas().addEventListener('click', anaDeleteListener);
             }
         }
 
@@ -8617,6 +9230,7 @@ function formatCoord(lat, lon, format) {
                 isCorridorMode ||
                 isAimPlaceMode ||
                 isLbzPlaceMode ||
+                isWindPlaceMode ||
                 isAnaTargetMode ||
                 isAnaReserveMode ||
                 isAnaNoteMode ||

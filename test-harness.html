@@ -8,15 +8,15 @@
     html, body { margin: 0; height: 100%; background: #0b1220; color: #e5e7eb; font: 13px/1.4 system-ui, sans-serif; }
     #map { position: absolute; inset: 0; }
     #hud {
-      position: fixed; z-index: 10; left: 12px; bottom: 12px; max-width: min(420px, calc(100vw - 24px));
-      background: rgba(15, 23, 42, 0.92); border: 1px solid #334155; border-radius: 10px;
+      position: fixed; z-index: 10; left: 12px; bottom: 12px; max-width: min(440px, calc(100vw - 24px));
+      background: rgba(15, 23, 42, 0.94); border: 1px solid #334155; border-radius: 10px;
       padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.45);
     }
     #hud h1 { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: #93c5fd; }
     #hud p { margin: 0 0 6px; color: #cbd5e1; }
     #hud code { background: #1e293b; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
     #hud a { color: #7dd3fc; }
-    #status { margin-top: 8px; color: #86efac; }
+    #status { margin-top: 8px; color: #86efac; white-space: pre-wrap; }
     #status.err { color: #fca5a5; }
   </style>
 </head>
@@ -24,11 +24,10 @@
   <div id="map"></div>
   <div id="hud">
     <h1>🦅 FalconRoute test harness</h1>
-    <p>Локальна карта без R2D2. Відкрий <strong>два вікна</strong> з різними <code>?client=</code>, щоб перевірити борти в Firebase.</p>
+    <p>Тільки через HTTP: <code>http://127.0.0.1:8765/…</code></p>
     <p>
-      Приклади:
-      <a href="?client=alpha&amp;engine=cesium">client=alpha</a> ·
-      <a href="?client=bravo&amp;engine=cesium" target="_blank">client=bravo (нове вікно)</a>
+      <a href="?client=wind&amp;engine=cesium">wind + cesium</a> ·
+      <a href="?client=alpha&amp;engine=cesium">alpha</a>
     </p>
     <p>Двигун: <code id="engine-label">…</code></p>
     <div id="status">Завантаження…</div>
@@ -37,17 +36,14 @@
   <script>
     (function setupClientId() {
       const params = new URLSearchParams(location.search);
-      const client = (params.get('client') || '').trim();
-      if (client) {
-        localStorage.setItem('falcon_route_client_id_v1', 'test_' + client.replace(/[^\w-]/g, '').slice(0, 24));
-      }
+      const client = (params.get('client') || 'wind').trim();
+      localStorage.setItem('falcon_route_client_id_v1', 'test_' + client.replace(/[^\w-]/g, '').slice(0, 24));
+      localStorage.setItem('falcon_route_local_test_v1', '1');
     })();
 
     const params = new URLSearchParams(location.search);
     const engine = (params.get('engine') || 'cesium').toLowerCase();
-    const gmapsKey = params.get('gmapsKey') || localStorage.getItem('falcon_test_gmaps_key') || '';
-    const scriptSrc = (params.get('script') || './falcon-route.js') +
-      ((params.get('script') || './falcon-route.js').includes('?') ? '&' : '?') + 'v=' + Date.now();
+    const scriptSrc = './falcon-route.js?v=' + Date.now();
     const statusEl = document.getElementById('status');
     const engineLabel = document.getElementById('engine-label');
 
@@ -75,8 +71,14 @@
       link.href = 'https://cesium.com/downloads/cesiumjs/releases/1.119/Build/Cesium/Widgets/widgets.css';
       document.head.appendChild(link);
 
-      // Без Ion-токена — лише OSM тайли
-      const viewer = new Cesium.Viewer('map', {
+      try { Cesium.Ion.defaultAccessToken = ''; } catch (_) {}
+
+      const osm = new Cesium.UrlTemplateImageryProvider({
+        url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        credit: '© OpenStreetMap'
+      });
+
+      const viewerOpts = {
         animation: false,
         timeline: false,
         baseLayerPicker: false,
@@ -86,99 +88,58 @@
         navigationHelpButton: false,
         fullscreenButton: false,
         infoBox: false,
-        selectionIndicator: false,
-        imageryProvider: false
-      });
-      viewer.imageryLayers.removeAll();
-      viewer.imageryLayers.addImageryProvider(
-        new Cesium.UrlTemplateImageryProvider({
-          url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          credit: '© OpenStreetMap'
-        })
-      );
+        selectionIndicator: false
+      };
+      // Cesium 1.107+: baseLayer; старші ігнорують невідоме поле
+      try { viewerOpts.baseLayer = new Cesium.ImageryLayer(osm); } catch (_) {}
+
+      const viewer = new Cesium.Viewer('map', viewerOpts);
+      try {
+        if (!viewerOpts.baseLayer) {
+          viewer.imageryLayers.removeAll();
+          viewer.imageryLayers.addImageryProvider(osm);
+        }
+      } catch (err) {
+        console.warn('imagery fallback', err);
+        try {
+          viewer.imageryLayers.removeAll();
+          viewer.imageryLayers.addImageryProvider(osm);
+        } catch (_) {}
+      }
+
       viewer.camera.setView({
         destination: Cesium.Cartesian3.fromDegrees(30.5234, 50.4501, 250000)
       });
+
+      // Щоб FR-кліки працювали на Cesium
+      try { viewer.canvas = viewer.scene.canvas; } catch (_) {}
 
       window.viewer = viewer;
       window.cesiumViewer = viewer;
       return viewer;
     }
 
-    async function bootGoogle() {
-      engineLabel.textContent = 'google maps';
-      if (!gmapsKey) {
-        throw new Error(
-          'Для Google Maps додай ключ: ?engine=google&gmapsKey=YOUR_KEY ' +
-          '(або збережи в localStorage falcon_test_gmaps_key). Інакше використай ?engine=cesium'
-        );
-      }
-      localStorage.setItem('falcon_test_gmaps_key', gmapsKey);
-      await loadScript(
-        'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(gmapsKey) + '&v=weekly'
-      );
-      const map = new google.maps.Map(document.getElementById('map'), {
-        center: { lat: 50.4501, lng: 30.5234 },
-        zoom: 8,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false
-      });
-      window.map = map;
-      window.googleMap = map;
-
-      // Демо-трек карти (червона стрілка) — імітує рухомий борт хоста для «Прикріпити до треку»
-      const hostIcon = () => ({
-        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-        scale: 6,
-        rotation: 40,
-        fillColor: '#ef4444',
-        fillOpacity: 0.95,
-        strokeColor: '#ffffff',
-        strokeWeight: 1.5,
-        anchor: new google.maps.Point(0, 2)
-      });
-      const hostTrack = new google.maps.Marker({
-        map,
-        position: { lat: 50.50, lng: 30.60 },
-        icon: hostIcon(),
-        title: 'HOST TRACK (demo)',
-        zIndex: 50
-      });
-      window.__demoHostTrack = hostTrack;
-      let hostT = 0;
-      setInterval(() => {
-        hostT += 0.035;
-        const lat = 50.50 + Math.sin(hostT) * 0.18;
-        const lng = 30.60 + Math.cos(hostT) * 0.22;
-        const heading = (Math.atan2(
-          Math.cos(hostT + 0.035) - Math.cos(hostT),
-          Math.sin(hostT + 0.035) - Math.sin(hostT)
-        ) * 180 / Math.PI + 360) % 360;
-        const icon = hostIcon();
-        icon.rotation = heading;
-        hostTrack.setIcon(icon);
-        hostTrack.setPosition({ lat, lng });
-      }, 250);
-
-      return map;
-    }
-
     async function main() {
       try {
-        if (engine === 'google') await bootGoogle();
-        else await bootCesium();
-
-        setStatus('Карта готова. Завантажую FalconRoute…');
-        await loadScript(scriptSrc + (scriptSrc.includes('?') ? '&' : '?') + 't=' + Date.now());
-        setStatus(
-          'OK · client=' + (localStorage.getItem('falcon_route_client_id_v1') || '?') +
-          ' · скрипт: ' + scriptSrc +
-          ' · панель має з’явитись справа/зверху'
-        );
+        if (location.protocol === 'file:') {
+          throw new Error('Не file:// — відкрий http://127.0.0.1:8765/test-harness.html?client=wind&engine=cesium');
+        }
+        await bootCesium();
+        setStatus('Карта OK. Гружу FalconRoute…');
+        await loadScript(scriptSrc);
+        setTimeout(() => {
+          const ui = document.getElementById('falcon-route-ui');
+          const meta = ui && ui.querySelector('.fr-head-meta');
+          setStatus(
+            (ui ? 'Панель OK' : 'Панель НЕ зʼявилась — дивись Console') +
+            (meta ? ' · ' + meta.textContent : '') +
+            '\nЩе → Вітер'
+          );
+          if (!ui) statusEl.className = 'err';
+        }, 800);
       } catch (err) {
         console.error(err);
-        setStatus(String(err.message || err), true);
+        setStatus(String(err && err.message || err), true);
       }
     }
 
