@@ -866,7 +866,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'wind-arrow-76';
+    const FR_BUILD = 'wind-1500-77';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -2629,7 +2629,7 @@ function formatCoord(lat, lon, format) {
                 <details class="fr-acc" data-fr-acc="wind">
                     <summary><span class="fr-acc-title">Вітер</span></summary>
                     <div class="fr-acc-body">
-                        <div class="fr-hint">Постав точку — крути повзунок висоти (10–180 м). Між опорними рівнями Open-Meteo значення інтерполюються.</div>
+                        <div class="fr-hint">Постав точку — повзунок висоти 10–1500 м. Низ — приземні рівні, вище — з рівнів тиску Open-Meteo (інтерполяція).</div>
                         <div class="fr-grid">
                             <button class="fr-btn fr-btn-pick" id="fr-wind-place">Точка вітру</button>
                             <button class="fr-btn" id="fr-wind-center">Центр карти</button>
@@ -2643,8 +2643,8 @@ function formatCoord(lat, lon, format) {
                                 <label for="fr-wind-height">Висота</label>
                                 <span id="fr-wind-height-val">120 м</span>
                             </div>
-                            <input type="range" id="fr-wind-height" min="10" max="180" step="1" value="120">
-                            <div class="fr-wind-ticks"><span>10</span><span>80</span><span>120</span><span>180</span></div>
+                            <input type="range" id="fr-wind-height" min="10" max="1500" step="10" value="120">
+                            <div class="fr-wind-ticks"><span>10</span><span>500</span><span>1000</span><span>1500</span></div>
                         </div>
                         <label class="fr-check"><input type="checkbox" id="fr-wind-show-arrow" checked> Стрілка на карті (куди дме)</label>
                         <label class="fr-check"><input type="checkbox" id="fr-wind-show-windy"> Показати Windy</label>
@@ -3403,8 +3403,13 @@ function formatCoord(lat, lon, format) {
             if (el) el.textContent = Math.round(h) + ' м';
         }
 
+        function clampWindHeight(h) {
+            const n = Math.round(Number(h) || 120);
+            return Math.max(10, Math.min(1500, n));
+        }
+
         function setWindHeightSlider(h) {
-            const v = Math.max(10, Math.min(180, Math.round(Number(h) || 120)));
+            const v = clampWindHeight(h);
             windHeightM = v;
             const el = document.getElementById('fr-wind-height');
             if (el) el.value = String(v);
@@ -3416,10 +3421,17 @@ function formatCoord(lat, lon, format) {
             const el = document.getElementById('fr-wind-height');
             const v = parseInt(el?.value, 10);
             if (Number.isFinite(v)) {
-                windHeightM = Math.max(10, Math.min(180, v));
+                windHeightM = clampWindHeight(v);
                 return windHeightM;
             }
-            return Math.max(10, Math.min(180, windHeightM || 120));
+            return clampWindHeight(windHeightM || 120);
+        }
+
+        function windProfileHeights() {
+            return Object.keys(windData?.levels || {})
+                .map((k) => parseInt(k, 10))
+                .filter((n) => Number.isFinite(n))
+                .sort((a, b) => a - b);
         }
 
         function lerpAngleDeg(a, b, t) {
@@ -3429,7 +3441,7 @@ function formatCoord(lat, lon, format) {
 
         function getActiveWindLevel() {
             if (!windData?.levels) return null;
-            const keys = [10, 80, 120, 180].filter((k) => windData.levels[k]);
+            const keys = windProfileHeights();
             if (!keys.length) return null;
             const h = getSelectedWindHeight();
             if (windData.levels[h]) {
@@ -3633,12 +3645,12 @@ function formatCoord(lat, lon, format) {
             const gust = Number.isFinite(lvl.gustMs)
                 ? ` · пориви <b>${lvl.gustMs.toFixed(1)} м/с</b>`
                 : '';
-            const nearest = [10, 80, 120, 180].reduce((best, hh) => {
-                if (!windData.levels[hh]) return best;
+            const keys = windProfileHeights();
+            const nearest = keys.reduce((best, hh) => {
                 if (best == null || Math.abs(hh - h) < Math.abs(best - h)) return hh;
                 return best;
             }, null);
-            const rows = [10, 80, 120, 180].map((hh) => {
+            const rows = keys.map((hh) => {
                 const L = windData.levels[hh];
                 if (!L) return '';
                 const on = hh === nearest ? ' on' : '';
@@ -3669,7 +3681,7 @@ function formatCoord(lat, lon, format) {
             el.querySelectorAll('tr.fr-wind-row[data-h]').forEach((tr) => {
                 tr.onclick = () => {
                     const hh = parseInt(tr.getAttribute('data-h'), 10);
-                    if (![10, 80, 120, 180].includes(hh)) return;
+                    if (!Number.isFinite(hh) || hh < 10 || hh > 1500) return;
                     setWindHeightSlider(hh);
                     setWindStatus(formatWindReadout(), false);
                     bindWindLevelRows();
@@ -3680,6 +3692,21 @@ function formatCoord(lat, lon, format) {
         }
 
         async function fetchWindAt(lat, lon) {
+            // Приземні рівні + рівні тиску ≈ до ~1500–2000 м AGL
+            const pressureLevels = [1000, 975, 950, 925, 900, 850, 800];
+            const pressureMsl = {
+                1000: 110,
+                975: 320,
+                950: 540,
+                925: 760,
+                900: 990,
+                850: 1460,
+                800: 1950
+            };
+            const hourly = pressureLevels.flatMap((p) => [
+                `wind_speed_${p}hPa`,
+                `wind_direction_${p}hPa`
+            ]).join(',');
             const url = 'https://api.open-meteo.com/v1/forecast'
                 + `?latitude=${encodeURIComponent(lat)}`
                 + `&longitude=${encodeURIComponent(lon)}`
@@ -3687,31 +3714,80 @@ function formatCoord(lat, lon, format) {
                 + ',wind_speed_80m,wind_direction_80m'
                 + ',wind_speed_120m,wind_direction_120m'
                 + ',wind_speed_180m,wind_direction_180m'
+                + `&hourly=${hourly}`
+                + '&forecast_hours=1'
                 + '&wind_speed_unit=ms'
                 + '&timezone=auto';
             const res = await fetch(url, { cache: 'no-store' });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
             const cur = data.current || {};
+            const hourlyData = data.hourly || {};
+            const elev = Number(data.elevation);
+            const ground = Number.isFinite(elev) ? elev : 0;
             const levels = {};
-            [10, 80, 120, 180].forEach((h) => {
-                const speed = Number(cur['wind_speed_' + h + 'm']);
-                const fromDeg = Number(cur['wind_direction_' + h + 'm']);
+
+            const putLevel = (h, speed, fromDeg, gustMs) => {
+                const height = Math.round(h);
+                if (!Number.isFinite(height) || height < 5) return;
                 if (!Number.isFinite(speed) || !Number.isFinite(fromDeg)) return;
+                // якщо ключ уже є (поверхня vs тиск) — лишаємо поверхню / ближчий
+                if (levels[height] && levels[height].priority === 'surface') return;
                 const from = ((fromDeg % 360) + 360) % 360;
-                levels[h] = {
+                levels[height] = {
                     speedMs: speed,
                     fromDeg: from,
                     toDeg: (from + 180) % 360,
-                    gustMs: h === 10 && Number.isFinite(Number(cur.wind_gusts_10m))
-                        ? Number(cur.wind_gusts_10m)
-                        : null
+                    gustMs: Number.isFinite(gustMs) ? gustMs : null,
+                    priority: height <= 180 ? 'surface' : 'pressure'
                 };
+            };
+
+            [10, 80, 120, 180].forEach((h) => {
+                putLevel(
+                    h,
+                    Number(cur['wind_speed_' + h + 'm']),
+                    Number(cur['wind_direction_' + h + 'm']),
+                    h === 10 ? Number(cur.wind_gusts_10m) : null
+                );
+                if (levels[h]) levels[h].priority = 'surface';
             });
-            if (!Object.keys(levels).length) throw new Error('немає даних вітру');
+
+            pressureLevels.forEach((p) => {
+                const speedArr = hourlyData['wind_speed_' + p + 'hPa'];
+                const dirArr = hourlyData['wind_direction_' + p + 'hPa'];
+                const speed = Number(Array.isArray(speedArr) ? speedArr[0] : speedArr);
+                const fromDeg = Number(Array.isArray(dirArr) ? dirArr[0] : dirArr);
+                const msl = pressureMsl[p];
+                if (!Number.isFinite(msl)) return;
+                const agl = Math.round(msl - ground);
+                // беремо рівні в діапазоні повзунка (+запас для інтерполяції до 1500)
+                if (agl < 50 || agl > 2200) return;
+                putLevel(Math.min(1500, Math.max(50, agl)), speed, fromDeg, null);
+            });
+
+            // гарантуємо точку 1500 м інтерполяцією/екстраполяцією з сусідніх
+            const keys = Object.keys(levels).map((k) => parseInt(k, 10)).sort((a, b) => a - b);
+            if (!keys.length) throw new Error('немає даних вітру');
+            if (!levels[1500] && keys.length >= 2) {
+                const hi = keys[keys.length - 1];
+                const lo = keys[keys.length - 2];
+                if (hi >= 900) {
+                    const a = levels[lo];
+                    const b = levels[hi];
+                    const t = Math.min(1.4, (1500 - lo) / Math.max(1, hi - lo));
+                    const speed = a.speedMs + (b.speedMs - a.speedMs) * t;
+                    const from = lerpAngleDeg(a.fromDeg, b.fromDeg, Math.min(1, t));
+                    putLevel(1500, speed, from, null);
+                } else {
+                    putLevel(1500, levels[hi].speedMs, levels[hi].fromDeg, null);
+                }
+            }
+
             return {
-                time: cur.time || '',
+                time: cur.time || (Array.isArray(hourlyData.time) ? hourlyData.time[0] : '') || '',
                 levels,
+                elevation: ground,
                 heightM: getSelectedWindHeight()
             };
         }
