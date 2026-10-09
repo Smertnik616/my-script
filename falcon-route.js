@@ -866,7 +866,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'wind-fix-74';
+    const FR_BUILD = 'wind-slider-75';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -2112,6 +2112,41 @@ function formatCoord(lat, lon, format) {
                 #falcon-route-ui .fr-wind-levels tr.fr-wind-row { cursor: pointer; }
                 #falcon-route-ui .fr-wind-levels tr.fr-wind-row:hover td { background: rgba(56,189,248,.08); }
                 #falcon-route-ui .fr-wind-levels tr.on td { background: rgba(14,165,233,.18); color: #e0f2fe; }
+                #falcon-route-ui .fr-wind-slider-row {
+                    display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px;
+                }
+                #falcon-route-ui .fr-wind-slider-top {
+                    display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+                }
+                #falcon-route-ui .fr-wind-slider-top label { color: #94a3b8; font-size: 11px; }
+                #falcon-route-ui #fr-wind-height-val {
+                    color: #7dd3fc; font-weight: 750; font-size: 13px; font-variant-numeric: tabular-nums;
+                }
+                #falcon-route-ui input[type="range"]#fr-wind-height {
+                    -webkit-appearance: none !important; appearance: none !important;
+                    width: 100% !important; height: 18px !important; min-height: 18px !important;
+                    background: transparent !important; border: 0 !important; padding: 0 !important;
+                    cursor: pointer;
+                }
+                #falcon-route-ui input[type="range"]#fr-wind-height::-webkit-slider-runnable-track {
+                    height: 6px; border-radius: 999px; background: linear-gradient(90deg, #1e3a5f, #38bdf8);
+                }
+                #falcon-route-ui input[type="range"]#fr-wind-height::-webkit-slider-thumb {
+                    -webkit-appearance: none; appearance: none;
+                    width: 16px; height: 16px; margin-top: -5px; border-radius: 50%;
+                    background: #e0f2fe; border: 2px solid #0284c7; box-shadow: 0 1px 4px rgba(0,0,0,.4);
+                }
+                #falcon-route-ui input[type="range"]#fr-wind-height::-moz-range-track {
+                    height: 6px; border-radius: 999px; background: linear-gradient(90deg, #1e3a5f, #38bdf8);
+                }
+                #falcon-route-ui input[type="range"]#fr-wind-height::-moz-range-thumb {
+                    width: 16px; height: 16px; border-radius: 50%;
+                    background: #e0f2fe; border: 2px solid #0284c7;
+                }
+                #falcon-route-ui .fr-wind-ticks {
+                    display: flex; justify-content: space-between; color: #64748b; font-size: 10px;
+                    padding: 0 1px;
+                }
                 #falcon-route-ui .fr-hub-lead {
                     grid-column:1 / -1; font-size:10px; line-height:1.3; color:#94a3b8;
                     background:#121826; border:1px solid #1f2937; border-radius:8px; padding:6px 8px;
@@ -2594,7 +2629,7 @@ function formatCoord(lat, lon, format) {
                 <details class="fr-acc" data-fr-acc="wind">
                     <summary><span class="fr-acc-title">Вітер</span></summary>
                     <div class="fr-acc-body">
-                        <div class="fr-hint">Постав точку — вітер на різних висотах (м/с + азимут куди дме). Обери висоту для стрілки на карті.</div>
+                        <div class="fr-hint">Постав точку — крути повзунок висоти (10–180 м). Між опорними рівнями Open-Meteo значення інтерполюються.</div>
                         <div class="fr-grid">
                             <button class="fr-btn fr-btn-pick" id="fr-wind-place">Точка вітру</button>
                             <button class="fr-btn" id="fr-wind-center">Центр карти</button>
@@ -2603,14 +2638,13 @@ function formatCoord(lat, lon, format) {
                             <button class="fr-btn" id="fr-wind-refresh">Оновити</button>
                             <button class="fr-btn fr-btn-danger" id="fr-wind-clear">Скинути</button>
                         </div>
-                        <div class="fr-field">
-                            <label for="fr-wind-height">Висота для стрілки</label>
-                            <select id="fr-wind-height">
-                                <option value="10">10 м · приземний</option>
-                                <option value="80">80 м</option>
-                                <option value="120" selected>120 м</option>
-                                <option value="180">180 м</option>
-                            </select>
+                        <div class="fr-wind-slider-row">
+                            <div class="fr-wind-slider-top">
+                                <label for="fr-wind-height">Висота</label>
+                                <span id="fr-wind-height-val">120 м</span>
+                            </div>
+                            <input type="range" id="fr-wind-height" min="10" max="180" step="1" value="120">
+                            <div class="fr-wind-ticks"><span>10</span><span>80</span><span>120</span><span>180</span></div>
                         </div>
                         <label class="fr-check"><input type="checkbox" id="fr-wind-show-arrow" checked> Стрілка на карті (куди дме)</label>
                         <label class="fr-check"><input type="checkbox" id="fr-wind-show-windy"> Показати Windy</label>
@@ -3364,16 +3398,78 @@ function formatCoord(lat, lon, format) {
             frame.src = windyEmbedUrl(windPoint.lat, windPoint.lon);
         }
 
+        function syncWindHeightLabel(h) {
+            const el = document.getElementById('fr-wind-height-val');
+            if (el) el.textContent = Math.round(h) + ' м';
+        }
+
+        function setWindHeightSlider(h) {
+            const v = Math.max(10, Math.min(180, Math.round(Number(h) || 120)));
+            windHeightM = v;
+            const el = document.getElementById('fr-wind-height');
+            if (el) el.value = String(v);
+            syncWindHeightLabel(v);
+            return v;
+        }
+
         function getSelectedWindHeight() {
             const el = document.getElementById('fr-wind-height');
             const v = parseInt(el?.value, 10);
-            return [10, 80, 120, 180].includes(v) ? v : (windHeightM || 120);
+            if (Number.isFinite(v)) {
+                windHeightM = Math.max(10, Math.min(180, v));
+                return windHeightM;
+            }
+            return Math.max(10, Math.min(180, windHeightM || 120));
+        }
+
+        function lerpAngleDeg(a, b, t) {
+            let d = ((b - a + 540) % 360) - 180;
+            return ((a + d * t) % 360 + 360) % 360;
         }
 
         function getActiveWindLevel() {
             if (!windData?.levels) return null;
+            const keys = [10, 80, 120, 180].filter((k) => windData.levels[k]);
+            if (!keys.length) return null;
             const h = getSelectedWindHeight();
-            return windData.levels[h] || windData.levels[10] || null;
+            if (windData.levels[h]) {
+                return { ...windData.levels[h], interpolated: false, heightM: h };
+            }
+            if (h <= keys[0]) return { ...windData.levels[keys[0]], interpolated: false, heightM: h };
+            if (h >= keys[keys.length - 1]) {
+                return { ...windData.levels[keys[keys.length - 1]], interpolated: false, heightM: h };
+            }
+            let lo = keys[0];
+            let hi = keys[keys.length - 1];
+            for (let i = 0; i < keys.length - 1; i++) {
+                if (h >= keys[i] && h <= keys[i + 1]) {
+                    lo = keys[i];
+                    hi = keys[i + 1];
+                    break;
+                }
+            }
+            const a = windData.levels[lo];
+            const b = windData.levels[hi];
+            const t = (h - lo) / Math.max(1, (hi - lo));
+            const speed = a.speedMs + (b.speedMs - a.speedMs) * t;
+            const from = lerpAngleDeg(a.fromDeg, b.fromDeg, t);
+            const to = (from + 180) % 360;
+            let gust = null;
+            if (Number.isFinite(a.gustMs) && Number.isFinite(b.gustMs)) {
+                gust = a.gustMs + (b.gustMs - a.gustMs) * t;
+            } else if (Number.isFinite(a.gustMs) && h <= 20) {
+                gust = a.gustMs;
+            }
+            return {
+                speedMs: speed,
+                fromDeg: from,
+                toDeg: to,
+                gustMs: gust,
+                interpolated: true,
+                heightM: h,
+                fromLevel: lo,
+                toLevel: hi
+            };
         }
 
         function windArrowDataUrl(toDeg, speedMs, heightM) {
@@ -3555,10 +3651,15 @@ function formatCoord(lat, lon, format) {
             const gust = Number.isFinite(lvl.gustMs)
                 ? ` · пориви <b>${lvl.gustMs.toFixed(1)} м/с</b>`
                 : '';
+            const nearest = [10, 80, 120, 180].reduce((best, hh) => {
+                if (!windData.levels[hh]) return best;
+                if (best == null || Math.abs(hh - h) < Math.abs(best - h)) return hh;
+                return best;
+            }, null);
             const rows = [10, 80, 120, 180].map((hh) => {
                 const L = windData.levels[hh];
                 if (!L) return '';
-                const on = hh === h ? ' on' : '';
+                const on = hh === nearest ? ' on' : '';
                 return `<tr class="fr-wind-row${on}" data-h="${hh}">` +
                     `<td><b>${hh} м</b></td>` +
                     `<td>${L.speedMs.toFixed(1)} м/с</td>` +
@@ -3566,8 +3667,11 @@ function formatCoord(lat, lon, format) {
                     `<td>${Math.round(L.fromDeg)}° ${compassLabel(L.fromDeg)}</td>` +
                     `</tr>`;
             }).join('');
+            const interpNote = lvl.interpolated
+                ? ` · інтерп. ${lvl.fromLevel}–${lvl.toLevel} м`
+                : '';
             return (
-                `Обрано <b>${h} м</b>: <b>${lvl.speedMs.toFixed(1)} м/с</b>${gust}<br>` +
+                `Висота <b>${h} м</b>: <b>${lvl.speedMs.toFixed(1)} м/с</b>${gust}${interpNote}<br>` +
                 `Куди дме: <b>${to}°</b> (${compassLabel(to)}) · Звідки: <b>${from}°</b> (${compassLabel(from)})<br>` +
                 `<table class="fr-wind-levels"><thead><tr><th>Висота</th><th>Швидк.</th><th>Куди</th><th>Звідки</th></tr></thead>` +
                 `<tbody>${rows}</tbody></table>` +
@@ -3584,9 +3688,7 @@ function formatCoord(lat, lon, format) {
                 tr.onclick = () => {
                     const hh = parseInt(tr.getAttribute('data-h'), 10);
                     if (![10, 80, 120, 180].includes(hh)) return;
-                    windHeightM = hh;
-                    const sel = document.getElementById('fr-wind-height');
-                    if (sel) sel.value = String(hh);
+                    setWindHeightSlider(hh);
                     setWindStatus(formatWindReadout(), false);
                     bindWindLevelRows();
                     renderWindArrow();
@@ -5685,14 +5787,18 @@ function formatCoord(lat, lon, format) {
         document.getElementById('fr-wind-clear')?.addEventListener('click', () => clearWindPoint());
         document.getElementById('fr-wind-show-arrow')?.addEventListener('change', () => renderWindArrow());
         document.getElementById('fr-wind-show-windy')?.addEventListener('change', () => updateWindyEmbed());
-        document.getElementById('fr-wind-height')?.addEventListener('change', () => {
-            windHeightM = getSelectedWindHeight();
+        const onWindHeightSlide = () => {
+            const h = getSelectedWindHeight();
+            syncWindHeightLabel(h);
             if (!windPoint || !windData) return;
             setWindStatus(formatWindReadout(), false);
             bindWindLevelRows();
             renderWindArrow();
             updateWindyEmbed();
-        });
+        };
+        document.getElementById('fr-wind-height')?.addEventListener('input', onWindHeightSlide);
+        document.getElementById('fr-wind-height')?.addEventListener('change', onWindHeightSlide);
+        syncWindHeightLabel(getSelectedWindHeight());
 
         document.getElementById('fr-ruler-clear')?.addEventListener('click', () => {
             if (isRulerMode) stopRulerMode();
