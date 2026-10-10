@@ -866,7 +866,7 @@ function formatCoord(lat, lon, format) {
         };
     }
 
-    const FR_BUILD = 'wind-1500-77';
+    const FR_BUILD = 'wind-arrow-78';
 
     // Реєстр маркерів карти-хоста (треки/стрілки не з FalconRoute)
     const hostMarkerRegistry = new Set();
@@ -3486,18 +3486,18 @@ function formatCoord(lat, lon, format) {
 
         function windArrowDataUrl(toDeg) {
             const az = Math.round(((Number(toDeg) % 360) + 360) % 360);
-            // компактна стрілка «куди дме», центр = точка виміру
+            // трохи більша стрілка — видно з відстані, центр = точка виміру
             const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
+<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56">
   <defs>
     <filter id="s" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="0.6" stdDeviation="0.8" flood-color="#000" flood-opacity="0.45"/>
+      <feDropShadow dx="0" dy="0.7" stdDeviation="1" flood-color="#000" flood-opacity="0.5"/>
     </filter>
   </defs>
-  <g transform="rotate(${az} 22 22)" filter="url(#s)">
-    <circle cx="22" cy="22" r="5.2" fill="#0c4a6e" stroke="#f0f9ff" stroke-width="1.6"/>
-    <path d="M22 5.5 L28.2 18.5 L22 15.8 L15.8 18.5 Z" fill="#38bdf8" stroke="#f8fafc" stroke-width="1.2" stroke-linejoin="round"/>
-    <path d="M20.7 22 V30.5 h2.6 V22 Z" fill="#7dd3fc"/>
+  <g transform="rotate(${az} 28 28)" filter="url(#s)">
+    <circle cx="28" cy="28" r="6.4" fill="#0c4a6e" stroke="#f0f9ff" stroke-width="1.8"/>
+    <path d="M28 6 L36.2 22.5 L28 19 L19.8 22.5 Z" fill="#38bdf8" stroke="#f8fafc" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M26.4 28 V39.5 h3.2 V28 Z" fill="#7dd3fc"/>
   </g>
 </svg>`;
             return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
@@ -3505,7 +3505,7 @@ function formatCoord(lat, lon, format) {
 
         function windArrowLengthM(speedMs) {
             const s = Number.isFinite(speedMs) ? speedMs : 3;
-            return Math.max(550, Math.min(1600, 500 + s * 90));
+            return Math.max(900, Math.min(2600, 800 + s * 140));
         }
 
         function renderWindArrow() {
@@ -3531,8 +3531,8 @@ function formatCoord(lat, lon, format) {
                     map,
                     geodesic: true,
                     strokeColor: '#0f172a',
-                    strokeOpacity: 0.35,
-                    strokeWeight: 5,
+                    strokeOpacity: 0.4,
+                    strokeWeight: 6,
                     zIndex: 198
                 });
                 markOwnOverlay(under);
@@ -3547,16 +3547,16 @@ function formatCoord(lat, lon, format) {
                     geodesic: true,
                     strokeColor: '#38bdf8',
                     strokeOpacity: 0.95,
-                    strokeWeight: 2.25,
+                    strokeWeight: 3,
                     zIndex: 199,
                     icons: [{
                         icon: {
                             path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                            scale: 3.2,
+                            scale: 4,
                             strokeColor: '#f8fafc',
                             fillColor: '#0ea5e9',
                             fillOpacity: 1,
-                            strokeWeight: 1
+                            strokeWeight: 1.2
                         },
                         offset: '100%'
                     }]
@@ -3572,8 +3572,8 @@ function formatCoord(lat, lon, format) {
                     optimized: false,
                     icon: {
                         url: windArrowDataUrl(flowDeg),
-                        scaledSize: new google.maps.Size(40, 40),
-                        anchor: new google.maps.Point(20, 20)
+                        scaledSize: new google.maps.Size(56, 56),
+                        anchor: new google.maps.Point(28, 28)
                     }
                 });
                 markOwnOverlay(m);
@@ -3591,7 +3591,7 @@ function formatCoord(lat, lon, format) {
                             Cartesian3.fromDegrees(windPoint.lon, windPoint.lat),
                             Cartesian3.fromDegrees(tip.lon, tip.lat)
                         ],
-                        width: 4.5,
+                        width: 5.5,
                         material: toCesiumColor('#0f172a', 0.4),
                         clampToGround: true
                     }
@@ -3602,7 +3602,7 @@ function formatCoord(lat, lon, format) {
                             Cartesian3.fromDegrees(windPoint.lon, windPoint.lat),
                             Cartesian3.fromDegrees(tip.lon, tip.lat)
                         ],
-                        width: 2.25,
+                        width: 3,
                         material: toCesiumColor('#38bdf8'),
                         clampToGround: true
                     }
@@ -3611,8 +3611,8 @@ function formatCoord(lat, lon, format) {
                     position: Cartesian3.fromDegrees(windPoint.lon, windPoint.lat),
                     billboard: {
                         image: windArrowDataUrl(flowDeg),
-                        width: 40,
-                        height: 40,
+                        width: 56,
+                        height: 56,
                         verticalOrigin: Cesium?.VerticalOrigin?.CENTER,
                         disableDepthTestDistance: Number.POSITIVE_INFINITY
                     }
@@ -3621,7 +3621,7 @@ function formatCoord(lat, lon, format) {
                     position: Cartesian3.fromDegrees(mid.lon, mid.lat),
                     label: {
                         text: label,
-                        font: 'bold 11px sans-serif',
+                        font: 'bold 12px sans-serif',
                         fillColor: toCesiumColor('#e0f2fe'),
                         outlineColor: toCesiumColor('#0c4a6e'),
                         outlineWidth: 3,
